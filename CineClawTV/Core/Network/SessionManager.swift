@@ -33,10 +33,16 @@ final class SessionManager: @unchecked Sendable {
     func setSession(token: String, username: String?) {
         self.token = token
         self.username = username
+        NotificationCenter.default.post(name: .serverOrSessionDidChange, object: nil)
     }
 
     func clearSession() {
         self.token = nil
         self.username = nil
+        NotificationCenter.default.post(name: .serverOrSessionDidChange, object: nil)
     }
+}
+
+extension Notification.Name {
+    static let serverOrSessionDidChange = Notification.Name("CineClawServerOrSessionDidChange")
 }

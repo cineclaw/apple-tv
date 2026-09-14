@@ -58,6 +58,32 @@ struct AudioPreferenceRequest: Codable, Sendable {
     let preferredAudioTitle: String
 }
 
+struct LoginRequest: Codable, Sendable {
+    let username: String
+    let password: String
+    let rememberMe: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case username
+        case password
+        case rememberMe = "remember_me"
+    }
+}
+
+struct LoginResponse: Codable, Sendable {
+    let success: Bool
+    let token: String
+    let username: String
+    let expiresAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case token
+        case username
+        case expiresAt = "expires_at"
+    }
+}
+
 struct PairingStatusResponse: Codable, Sendable {
     let paired: Bool
     let token: String?

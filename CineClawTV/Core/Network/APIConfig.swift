@@ -8,6 +8,7 @@ final class APIConfig: @unchecked Sendable {
     var baseURL: String {
         didSet {
             UserDefaults.standard.set(baseURL, forKey: "cineclaw_base_url")
+            NotificationCenter.default.post(name: .serverOrSessionDidChange, object: nil)
         }
     }
 
@@ -24,9 +25,20 @@ final class APIConfig: @unchecked Sendable {
     }
 
     private init() {
-        self.baseURL = UserDefaults.standard.string(forKey: "cineclaw_base_url") ?? "http://192.168.88.126:3000"
+        self.baseURL = UserDefaults.standard.string(forKey: "cineclaw_base_url") ?? "http://192.168.88.19:3000"
         self.defaultQuality = UserDefaults.standard.string(forKey: "cineclaw_default_quality") ?? "1080p"
         self.audioPassthrough = UserDefaults.standard.bool(forKey: "cineclaw_audio_passthrough")
+    }
+
+    func setCleanBaseURL(_ url: String) {
+        var clean = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
+            clean = "http://\(clean)"
+        }
+        while clean.hasSuffix("/") {
+            clean.removeLast()
+        }
+        self.baseURL = clean
     }
 
     func torrServerURL(for pathOrStream: String) -> URL? {

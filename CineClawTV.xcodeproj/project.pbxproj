@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01E491EF95C08EBCD5592CB0 /* ShelfRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F995AC044AD2564CC714E182 /* ShelfRowView.swift */; };
+		E1A0F9B1C234D56789012345 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B1C3D4E5F6A7B8C9D0E1F2 /* AuthView.swift */; };
 		14C2FED48623B3A349D1C975 /* QualityAccordionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A29ED4839EE8A7587187C14 /* QualityAccordionView.swift */; };
 		17A9E1B9C465A87E2EA99570 /* APIConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E58EEE978E7B949C3B0C8B8 /* APIConfig.swift */; };
 		1A3124D8E903CAD208C3C886 /* NativeVLCPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2C292EB0B6A32F386655F4 /* NativeVLCPlayerView.swift */; };
@@ -68,6 +69,7 @@
 		6CF218CF251EE6ECFDD193DD /* FocusCardStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FocusCardStyle.swift; sourceTree = "<group>"; };
 		71F21A77D5A271C79E2B9EB7 /* ResumeConfirmModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResumeConfirmModal.swift; sourceTree = "<group>"; };
 		792692F2E3811ED7FD164C98 /* PlayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViewModel.swift; sourceTree = "<group>"; };
+		F2B1C3D4E5F6A7B8C9D0E1F2 /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
 		82FFC27592B37683AB6894A8 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		89A5AC568C332D28DB54AF81 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		97D3F1EA03FBA8BFF71B778C /* PlaybackModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackModels.swift; sourceTree = "<group>"; };
@@ -99,6 +101,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		A1B2C3D4E5F6A7B8C9D0E1A1 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				F2B1C3D4E5F6A7B8C9D0E1F2 /* AuthView.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
 		0F74352A3B66B6718E3DAFC4 /* Home */ = {
 			isa = PBXGroup;
 			children = (
@@ -164,6 +174,7 @@
 		7990C8B2F704F217F60A8127 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				A1B2C3D4E5F6A7B8C9D0E1A1 /* Auth */,
 				8AA71EA3842059DAD0F503C3 /* Details */,
 				0F74352A3B66B6718E3DAFC4 /* Home */,
 				28B14448976055BD1DF259B8 /* Navigation */,
@@ -347,6 +358,7 @@
 				17A9E1B9C465A87E2EA99570 /* APIConfig.swift in Sources */,
 				EB0BBA405D0C4AEFFF73E9C3 /* AVPlayerEngine.swift in Sources */,
 				C30878C5C761C1513CE61A0B /* AiCriticsCardView.swift in Sources */,
+				E1A0F9B1C234D56789012345 /* AuthView.swift in Sources */,
 				99B81C5EFDE943F6D52F2C26 /* CineClawClient.swift in Sources */,
 				D3618E78EE95E36006DC5FAC /* CineClawTVApp.swift in Sources */,
 				AFB51C2CF3B9948C01FC02CD /* CinemaPlayerView.swift in Sources */,

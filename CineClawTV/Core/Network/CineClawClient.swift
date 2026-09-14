@@ -415,6 +415,62 @@ final class CineClawClient: Sendable {
         let (data, _) = try await session.data(for: req)
         return try decoder.decode(PairingStatusResponse.self, from: data)
     }
+
+    func login(username: String, password: String, customBaseURL: String? = nil) async throws -> LoginResponse {
+        let base = customBaseURL ?? APIConfig.shared.baseURL
+        guard var components = URLComponents(string: base) else {
+            throw URLError(.badURL)
+        }
+        components.path = "/api/auth/login"
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+
+        let body = try JSONEncoder().encode(LoginRequest(
+            username: username,
+            password: password,
+            rememberMe: true
+        ))
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.httpBody = body
+        req.timeoutInterval = 10
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        if http.statusCode == 401 {
+            throw NSError(domain: "CineClawAuth", code: 401, userInfo: [NSLocalizedDescriptionKey: "Неверный логин или пароль"])
+        }
+
+        guard (200...299).contains(http.statusCode) else {
+            throw NSError(domain: "CineClawAuth", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Сервер ответил ошибкой (HTTP \(http.statusCode))"])
+        }
+
+        return try decoder.decode(LoginResponse.self, from: data)
+    }
+
+    func pingServer(baseURL: String? = nil) async -> Bool {
+        let base = baseURL ?? APIConfig.shared.baseURL
+        guard var components = URLComponents(string: base) else { return false }
+        components.path = "/"
+        guard let url = components.url else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "HEAD"
+        req.timeoutInterval = 3
+        do {
+            let (_, response) = try await session.data(for: req)
+            guard let code = (response as? HTTPURLResponse)?.statusCode else { return false }
+            return (200...401).contains(code)
+        } catch {
+            return false
+        }
+    }
 }
 
 extension Notification.Name {
