@@ -32,14 +32,14 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         if isHLS {
             KSOptions.firstPlayerType = KSAVPlayer.self
             KSOptions.secondPlayerType = KSAVPlayer.self
+            KSOptions.audioPlayerType = AudioEnginePlayer.self
             logger.info("Configured KSAVPlayer (native Apple HLS engine) for m3u8")
         } else {
             KSOptions.firstPlayerType = KSMEPlayer.self
             KSOptions.secondPlayerType = KSMEPlayer.self
+            KSOptions.audioPlayerType = AudioEnginePlayer.self
             logger.info("Configured KSMEPlayer (FFmpeg Metal engine) for container stream")
         }
-        // AudioUnitPlayer (CoreAudio RemoteIO) provides direct hardware playback with automatic 5.1->stereo downmix
-        KSOptions.audioPlayerType = AudioUnitPlayer.self
     }
 
     var isPlaying: Bool {
@@ -144,8 +144,8 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
-        options.preferredForwardBufferDuration = 3.0
-        options.maxBufferDuration = 60.0
+        options.preferredForwardBufferDuration = 30.0
+        options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
 
         // Probing optimization: cuts open time to <0.5s while keeping proper demuxer buffering
@@ -153,12 +153,16 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.maxAnalyzeDuration = 500_000 // 0.5s
         options.autoSelectEmbedSubtitle = false
 
+        let isHLS = url.pathExtension.lowercased() == "m3u8" || url.absoluteString.contains(".m3u8")
+
         if let seek = initialSeek, seek > 2.0 {
             options.startPlayTime = seek
             _currentTime = seek
             seekTargetTime = seek
-            pendingInitialSeek = seek
-            logger.info("Set startPlayTime to \(seek)s")
+            // HLS streams with #EXT-X-START:TIME-OFFSET start at target seek automatically.
+            // Avoid redundant playerLayer.seek which flushes buffer and delays start.
+            pendingInitialSeek = isHLS ? nil : seek
+            logger.info("Set startPlayTime to \(seek)s (isHLS: \(isHLS))")
         } else {
             options.startPlayTime = 0
             _currentTime = 0
@@ -183,12 +187,14 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         logger.info("Switching stream in-place: \(url.absoluteString, privacy: .public), initialSeek: \(initialSeek ?? 0)")
         configurePlayerTypes(for: url)
 
+        let isHLS = url.pathExtension.lowercased() == "m3u8" || url.absoluteString.contains(".m3u8")
+
         let options = KSOptions()
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
-        options.preferredForwardBufferDuration = 3.0
-        options.maxBufferDuration = 60.0
+        options.preferredForwardBufferDuration = 30.0
+        options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
         options.probesize = 1024 * 1024 // 1 MB
         options.maxAnalyzeDuration = 500_000 // 0.5s
@@ -198,7 +204,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
             options.startPlayTime = seek
             _currentTime = seek
             seekTargetTime = seek
-            pendingInitialSeek = seek
+            pendingInitialSeek = isHLS ? nil : seek
         }
 
         layer.set(url: url, options: options)

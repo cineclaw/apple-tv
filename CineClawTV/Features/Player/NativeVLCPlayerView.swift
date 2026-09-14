@@ -722,10 +722,19 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
             self?.resetHideControlsTimer()
         }
 
+        let transcode480Action = UIAction(
+            title: "⚙️ 480p SD (Быстрый старт H.264)",
+            state: (viewModel.isTranscoding && viewModel.activeTranscodeProfile == "480p") ? .on : .off
+        ) { [weak self] _ in
+            self?.viewModel.switchTranscodeMode(enableTranscode: true, profile: "480p")
+            self?.updateMenus()
+            self?.resetHideControlsTimer()
+        }
+
         elements.append(UIMenu(
             title: "Режим воспроизведения",
             options: .displayInline,
-            children: [directAction, transcode1080Action, transcode720Action]
+            children: [directAction, transcode1080Action, transcode720Action, transcode480Action]
         ))
 
         // 2. Releases from trackers
