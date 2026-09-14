@@ -144,7 +144,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
-        options.preferredForwardBufferDuration = 30.0
+        options.preferredForwardBufferDuration = 0.0
         options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
 
@@ -174,6 +174,10 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         let layer = KSPlayerLayer(url: url, isAutoPlay: true, options: options, delegate: self)
         self.playerLayer = layer
 
+        if let av = (layer.player as? KSAVPlayer)?.player {
+            av.automaticallyWaitsToMinimizeStalling = true
+        }
+
         if let videoView = layer.player.view {
             onVideoViewReady?(videoView)
         }
@@ -193,7 +197,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
-        options.preferredForwardBufferDuration = 30.0
+        options.preferredForwardBufferDuration = 0.0
         options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
         options.probesize = 1024 * 1024 // 1 MB
@@ -208,6 +212,9 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         }
 
         layer.set(url: url, options: options)
+        if let av = (layer.player as? KSAVPlayer)?.player {
+            av.automaticallyWaitsToMinimizeStalling = true
+        }
     }
 
     func play() {
@@ -290,6 +297,10 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         self.logger.debug("KSPlayer state: \(state.description)")
         if state == .readyToPlay {
             self.isSeeking = false
+            if let av = (layer.player as? KSAVPlayer)?.player {
+                av.automaticallyWaitsToMinimizeStalling = true
+                av.currentItem?.preferredForwardBufferDuration = 30.0
+            }
             if let videoView = layer.player.view {
                 self.onVideoViewReady?(videoView)
             }
