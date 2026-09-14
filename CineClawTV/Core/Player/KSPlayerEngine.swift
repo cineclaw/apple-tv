@@ -190,6 +190,9 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.preferredForwardBufferDuration = 3.0
         options.maxBufferDuration = 60.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
+        options.probesize = 1024 * 1024 // 1 MB
+        options.maxAnalyzeDuration = 500_000 // 0.5s
+        options.autoSelectEmbedSubtitle = false
 
         if let seek = initialSeek, seek > 2.0 {
             options.startPlayTime = seek

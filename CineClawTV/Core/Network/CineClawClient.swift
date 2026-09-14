@@ -471,6 +471,17 @@ final class CineClawClient: Sendable {
             return false
         }
     }
+
+    // MARK: - Transcode Management
+    func stopTranscoding(hash: String? = nil, session sessionID: String? = nil) async {
+        guard let url = makeURL(path: "/api/stream/transcode/stop") else { return }
+        var dict: [String: String] = [:]
+        if let h = hash { dict["hash"] = h }
+        if let s = sessionID { dict["session"] = s }
+        guard let body = try? JSONSerialization.data(withJSONObject: dict) else { return }
+        let req = makeRequest(url: url, method: "POST", body: body)
+        _ = try? await session.data(for: req)
+    }
 }
 
 extension Notification.Name {
