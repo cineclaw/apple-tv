@@ -345,8 +345,8 @@ enum TorrentSelectionHelper {
         if torrents.isEmpty { return nil }
 
         // If device does not support hardware HEVC (e.g. Apple TV HD / Apple A8),
-        // prioritize hardware-supported H.264 releases first to prevent CPU stuttering
-        if !isHardwareHEVCSupported {
+        // prioritize hardware-supported H.264 releases first ONLY if user explicitly forced direct playback
+        if !isHardwareHEVCSupported && APIConfig.shared.playbackMode == .direct {
             let hwSupported = torrents.filter { !$0.isHEVC }
             if !hwSupported.isEmpty, let bestHw = selectBestReleaseInternal(from: hwSupported, targetSeason: targetSeason, preferredQuality: preferredQuality) {
                 return bestHw

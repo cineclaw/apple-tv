@@ -113,17 +113,27 @@ final class APIConfig: @unchecked Sendable {
         let clean = pathOrStream.hasPrefix("/") ? pathOrStream : "/\(pathOrStream)"
         // TorrServer native port 8092 does not have "/torr" prefix (which is Nginx-only)
         let pathFor8092 = clean.hasPrefix("/torr/") ? String(clean.dropFirst(5)) : clean
-        return URL(string: "\(directBase)\(pathFor8092)")
+        let fullString = "\(directBase)\(pathFor8092)"
+        if let u = URL(string: fullString) {
+            return u
+        }
+        let encoded = fullString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fullString
+        return URL(string: encoded)
     }
 
     func streamURL(for pathOrStream: String) -> URL? {
         if pathOrStream.hasPrefix("http://") || pathOrStream.hasPrefix("https://") {
-            return URL(string: pathOrStream)
+            if let u = URL(string: pathOrStream) { return u }
+            let enc = pathOrStream.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pathOrStream
+            return URL(string: enc)
         }
         let clean = pathOrStream.hasPrefix("/") ? pathOrStream : "/\(pathOrStream)"
         if clean.hasPrefix("/api/") {
             // Proxied via Nginx / tracker-proxy on main baseURL (port 3000)
-            return URL(string: "\(baseURL)\(clean)")
+            let full = "\(baseURL)\(clean)"
+            if let u = URL(string: full) { return u }
+            let enc = full.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? full
+            return URL(string: enc)
         }
         return torrServerURL(for: clean)
     }

@@ -199,7 +199,9 @@ final class PlayerViewModel: @unchecked Sendable {
             var info: PlayerInfoResponse? = try? await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
 
             let serverHash = info?.mediaSourceId ?? ""
-            let needsMount = serverHash.isEmpty || (!release.effectiveHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame && info?.success != true)
+            let hasActiveStream = info?.success == true && (info?.directStreamUrl?.isEmpty == false || info?.streamUrl?.isEmpty == false)
+            let isDifferentRelease = !release.effectiveHash.isEmpty && !serverHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame
+            let needsMount = !hasActiveStream || isDifferentRelease
 
             if needsMount {
                 mountStatusText = "Монтирование торрента в TorrServer..."
@@ -213,18 +215,18 @@ final class PlayerViewModel: @unchecked Sendable {
                     episode: episode
                 )
 
-                for attempt in 0..<6 {
-                    mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/6)..."
+                for attempt in 0..<10 {
+                    mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/10)..."
                     do {
                         let candidate = try await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
-                        if candidate.success == true && (candidate.directStreamUrl != nil || candidate.streamUrl != nil) {
+                        if candidate.success == true && (candidate.directStreamUrl?.isEmpty == false || candidate.streamUrl?.isEmpty == false) {
                             info = candidate
                             break
                         }
                     } catch {
                         logger.warning("getPlayerInfo attempt \(attempt + 1) error: \(error.localizedDescription)")
                     }
-                    if attempt < 5 {
+                    if attempt < 9 {
                         try? await Task.sleep(nanoseconds: 1_200_000_000)
                     }
                 }
@@ -232,7 +234,7 @@ final class PlayerViewModel: @unchecked Sendable {
                 logger.info("Using remembered server source hash: \(serverHash, privacy: .public)")
             }
 
-            if info == nil {
+            if info == nil || info?.success != true {
                 info = try? await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
             }
             self.playerInfo = info
@@ -248,21 +250,25 @@ final class PlayerViewModel: @unchecked Sendable {
                 let totalDur = info?.durationSeconds ?? duration
                 let durParam = totalDur > 0 ? "&duration=\(String(format: "%.2f", totalDur))" : ""
                 let startParam = effectiveSeek > 0 ? String(format: "%.2f", effectiveSeek) : "0"
-                let targetHash = info?.mediaSourceId ?? release.effectiveHash
+                let targetHash = (info?.mediaSourceId?.isEmpty == false ? info?.mediaSourceId : nil) ?? release.effectiveHash
                 let fileIdx = info?.targetFileIdx ?? 0
+                guard !targetHash.isEmpty else {
+                    throw NSError(domain: "CineClaw", code: -1002, userInfo: [NSLocalizedDescriptionKey: "Отсутствует хеш торрента для транскодирования"])
+                }
                 let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(activeTranscodeProfile)&file_idx=\(fileIdx)&audio=\(targetAudio)&start=\(startParam)\(durParam)&s=\(UUID().uuidString.prefix(8))"
                 guard let url = APIConfig.shared.streamURL(for: transcodePath) else {
-                    throw URLError(.badURL)
+                    throw NSError(domain: "CineClaw", code: -1000, userInfo: [NSLocalizedDescriptionKey: "Не удалось сформировать адрес потока транскодирования"])
                 }
                 streamURL = url
                 logger.info("Playing H.264 transcoded stream: \(streamURL.absoluteString, privacy: .public)")
             } else {
                 let rawPath = info?.directStreamUrl ?? info?.streamUrl
                 guard let path = rawPath, !path.isEmpty else {
-                    throw URLError(.badURL)
+                    let errDetail = info?.error ?? "Торрент не успел запуститься в TorrServer. Попробуйте еще раз."
+                    throw NSError(domain: "CineClaw", code: -1001, userInfo: [NSLocalizedDescriptionKey: errDetail])
                 }
                 guard let url = APIConfig.shared.streamURL(for: path) else {
-                    throw URLError(.badURL)
+                    throw NSError(domain: "CineClaw", code: -1000, userInfo: [NSLocalizedDescriptionKey: "Не удалось сформировать адрес видеопотока (\(path))"])
                 }
                 streamURL = url
                 logger.info("Playing direct container stream: \(streamURL.absoluteString, privacy: .public)")
