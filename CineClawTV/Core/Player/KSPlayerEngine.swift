@@ -175,6 +175,32 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         }
     }
 
+    func switchStream(url: URL, initialSeek: Double?) {
+        guard let layer = playerLayer else {
+            load(url: url, initialSeek: initialSeek)
+            return
+        }
+        logger.info("Switching stream in-place: \(url.absoluteString, privacy: .public), initialSeek: \(initialSeek ?? 0)")
+        configurePlayerTypes(for: url)
+
+        let options = KSOptions()
+        options.hardwareDecode = true
+        options.asynchronousDecompression = true
+        options.isAccurateSeek = false
+        options.preferredForwardBufferDuration = 3.0
+        options.maxBufferDuration = 60.0
+        options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
+
+        if let seek = initialSeek, seek > 2.0 {
+            options.startPlayTime = seek
+            _currentTime = seek
+            seekTargetTime = seek
+            pendingInitialSeek = seek
+        }
+
+        layer.set(url: url, options: options)
+    }
+
     func play() {
         playerLayer?.play()
     }

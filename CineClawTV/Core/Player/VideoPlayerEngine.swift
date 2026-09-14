@@ -58,6 +58,7 @@ protocol VideoPlayerEngine: AnyObject {
     var currentSubtitleTrackId: String { get }
 
     func load(url: URL, initialSeek: Double?)
+    func switchStream(url: URL, initialSeek: Double?)
     func play()
     func pause()
     func togglePlayPause()
@@ -65,4 +66,10 @@ protocol VideoPlayerEngine: AnyObject {
     func selectAudio(trackId: String)
     func selectSubtitle(trackId: String)
     func stop()
+}
+
+extension VideoPlayerEngine {
+    func switchStream(url: URL, initialSeek: Double?) {
+        load(url: url, initialSeek: initialSeek)
+    }
 }

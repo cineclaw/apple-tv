@@ -424,7 +424,7 @@ final class PlayerViewModel: @unchecked Sendable {
                 let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(activeTranscodeProfile)&file_idx=\(fileIdx)&audio=\(idx)&start=\(String(format: "%.2f", cur))\(durParam)&s=\(UUID().uuidString.prefix(8))"
                 if let url = APIConfig.shared.streamURL(for: transcodePath) {
                     logger.info("Switching transcode audio to track \(idx): \(url.absoluteString, privacy: .public)")
-                    engine.load(url: url, initialSeek: cur > 2.0 ? cur : nil)
+                    engine.switchStream(url: url, initialSeek: cur > 2.0 ? cur : nil)
                 }
             }
         } else {
@@ -454,7 +454,7 @@ final class PlayerViewModel: @unchecked Sendable {
             let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(profile)&file_idx=\(fileIdx)&audio=\(targetAudio)&start=\(String(format: "%.2f", cur))\(durParam)&s=\(UUID().uuidString.prefix(8))"
             if let url = APIConfig.shared.streamURL(for: transcodePath) {
                 logger.info("Switching to transcoded stream: \(url.absoluteString, privacy: .public)")
-                engine.load(url: url, initialSeek: cur > 2.0 ? cur : nil)
+                engine.switchStream(url: url, initialSeek: cur > 2.0 ? cur : nil)
             }
         } else {
             APIConfig.shared.playbackMode = .direct
