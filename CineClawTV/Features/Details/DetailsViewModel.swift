@@ -197,13 +197,15 @@ final class DetailsViewModel {
     }
 
     func isEpisodeWatched(season: Int, episode: Int) -> Bool {
-        let key = "\(season)_\(episode)"
-        return seriesProgress?.episodes[key]?.isCompleted == true
+        let keyUnderscore = "\(season)_\(episode)"
+        let keyX = "\(season)x\(episode)"
+        return seriesProgress?.episodes[keyX]?.isCompleted == true || seriesProgress?.episodes[keyUnderscore]?.isCompleted == true
     }
 
     func hasUnwatchedPrior(season: Int, episode: Int) -> Bool {
         // If series has episodes loaded, check if any episode before (season, episode) is unwatched
         for ep in allEpisodes {
+            if ep.seasonNumber <= 0 { continue }
             if ep.seasonNumber < season || (ep.seasonNumber == season && ep.episodeNumber < episode) {
                 if !isEpisodeWatched(season: ep.seasonNumber, episode: ep.episodeNumber) {
                     return true
