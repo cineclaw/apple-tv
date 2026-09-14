@@ -20,16 +20,24 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
     private var isSeeking: Bool = false
     private var seekTargetTime: Double = 0.0
     private var seekTask: Task<Void, Never>?
+    private var pendingInitialSeek: Double? = nil
 
     override init() {
         super.init()
         configurePlayerTypes()
     }
 
-    private func configurePlayerTypes() {
-        // Swift 6 strict concurrency safe mutation of KSPlayer global player types
-        KSOptions.firstPlayerType = KSMEPlayer.self
-        KSOptions.secondPlayerType = KSMEPlayer.self
+    private func configurePlayerTypes(for url: URL? = nil) {
+        let isHLS = url?.pathExtension.lowercased() == "m3u8" || url?.absoluteString.contains(".m3u8") == true
+        if isHLS {
+            KSOptions.firstPlayerType = KSAVPlayer.self
+            KSOptions.secondPlayerType = KSAVPlayer.self
+            logger.info("Configured KSAVPlayer (native Apple HLS engine) for m3u8")
+        } else {
+            KSOptions.firstPlayerType = KSMEPlayer.self
+            KSOptions.secondPlayerType = KSMEPlayer.self
+            logger.info("Configured KSMEPlayer (FFmpeg Metal engine) for container stream")
+        }
         // AudioUnitPlayer (CoreAudio RemoteIO) provides direct hardware playback with automatic 5.1->stereo downmix
         KSOptions.audioPlayerType = AudioUnitPlayer.self
     }
@@ -130,7 +138,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         logger.info("Loading stream with KSPlayer: \(url.absoluteString, privacy: .public), initialSeek: \(initialSeek ?? 0)")
 
         stop()
-        configurePlayerTypes()
+        configurePlayerTypes(for: url)
 
         let options = KSOptions()
         options.hardwareDecode = true
@@ -149,11 +157,13 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
             options.startPlayTime = seek
             _currentTime = seek
             seekTargetTime = seek
+            pendingInitialSeek = seek
             logger.info("Set startPlayTime to \(seek)s")
         } else {
             options.startPlayTime = 0
             _currentTime = 0
             seekTargetTime = 0
+            pendingInitialSeek = nil
             logger.info("Starting from 0s")
         }
 
@@ -233,6 +243,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
 
     func stop() {
         isSeeking = false
+        pendingInitialSeek = nil
         playerLayer?.pause()
         playerLayer?.player.view?.removeFromSuperview()
         playerLayer = nil
@@ -246,6 +257,14 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
             self.isSeeking = false
             if let videoView = layer.player.view {
                 self.onVideoViewReady?(videoView)
+            }
+            if let seek = self.pendingInitialSeek {
+                self.pendingInitialSeek = nil
+                let cur = layer.player.currentPlaybackTime
+                if abs(cur - seek) > 3.0 {
+                    self.logger.info("ReadyToPlay: applying pending initial seek to \(seek)s (current is \(cur)s)")
+                    layer.seek(time: seek, autoPlay: true) { _ in }
+                }
             }
         }
     }
