@@ -651,7 +651,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     func updateAudioMenu() {
-        let tracks = viewModel.engine.audioTracks
+        let tracks = viewModel.audioTracks
         if tracks.isEmpty {
             audioButton.menu = UIMenu(title: "Звук", children: [
                 UIAction(title: "Поиск аудиодорожек...", attributes: .disabled) { _ in }
@@ -659,7 +659,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
             return
         }
 
-        let currentId = viewModel.engine.currentAudioTrackId
+        let currentId = viewModel.currentAudioTrackId
         let actions: [UIAction] = tracks.map { track in
             let isCurrent = track.id == currentId
             return UIAction(
@@ -675,8 +675,8 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     func updateSubtitlesMenu() {
-        let tracks = viewModel.engine.subtitleTracks
-        let currentId = viewModel.engine.currentSubtitleTrackId
+        let tracks = viewModel.subtitleTracks
+        let currentId = viewModel.currentSubtitleTrackId
         let actions: [UIAction] = tracks.map { track in
             let isCurrent = track.id == currentId
             return UIAction(
@@ -692,37 +692,71 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     func updateQualityMenu() {
-        guard !viewModel.qualityGroups.isEmpty else {
-            qualityButton.menu = UIMenu(title: "Качество", children: [
-                UIAction(title: "Загрузка качеств...", attributes: .disabled) { _ in }
-            ])
-            return
+        var elements: [UIMenuElement] = []
+
+        // 1. Transcode & Stream Mode Group
+        let directAction = UIAction(
+            title: "⚡ Прямой поток (MKV)",
+            state: !viewModel.isTranscoding ? .on : .off
+        ) { [weak self] _ in
+            self?.viewModel.switchTranscodeMode(enableTranscode: false)
+            self?.updateMenus()
+            self?.resetHideControlsTimer()
         }
 
-        var elements: [UIMenuElement] = []
-        for group in viewModel.qualityGroups {
-            let releaseActions = group.releases.map { rel in
-                let isCurrent = rel.effectiveHash == viewModel.release.effectiveHash
-                return UIAction(
-                    title: "\(group.tier) [\(rel.codecBadge)]: \(rel.sizeFormatted) • 🌱\(rel.seeds)",
-                    state: isCurrent ? .on : .off
-                ) { [weak self] _ in
-                    Task { @MainActor in
-                        await self?.viewModel.switchQuality(to: rel)
-                        self?.titleLabel.text = self?.viewModel.displayTitle
-                        self?.updateMenus()
-                        self?.resetHideControlsTimer()
+        let transcode1080Action = UIAction(
+            title: "⚙️ 1080p Full HD (Транскод H.264)",
+            state: (viewModel.isTranscoding && viewModel.activeTranscodeProfile == "1080p") ? .on : .off
+        ) { [weak self] _ in
+            self?.viewModel.switchTranscodeMode(enableTranscode: true, profile: "1080p")
+            self?.updateMenus()
+            self?.resetHideControlsTimer()
+        }
+
+        let transcode720Action = UIAction(
+            title: "⚙️ 720p HD (Транскод H.264)",
+            state: (viewModel.isTranscoding && viewModel.activeTranscodeProfile == "720p") ? .on : .off
+        ) { [weak self] _ in
+            self?.viewModel.switchTranscodeMode(enableTranscode: true, profile: "720p")
+            self?.updateMenus()
+            self?.resetHideControlsTimer()
+        }
+
+        elements.append(UIMenu(
+            title: "Режим воспроизведения",
+            options: .displayInline,
+            children: [directAction, transcode1080Action, transcode720Action]
+        ))
+
+        // 2. Releases from trackers
+        if !viewModel.qualityGroups.isEmpty {
+            var releaseGroupElements: [UIMenuElement] = []
+            for group in viewModel.qualityGroups {
+                let releaseActions = group.releases.map { rel in
+                    let isCurrent = rel.effectiveHash == viewModel.release.effectiveHash
+                    return UIAction(
+                        title: "\(group.tier) [\(rel.codecBadge)]: \(rel.sizeFormatted) • 🌱\(rel.seeds)",
+                        state: isCurrent ? .on : .off
+                    ) { [weak self] _ in
+                        Task { @MainActor in
+                            await self?.viewModel.switchQuality(to: rel)
+                            self?.titleLabel.text = self?.viewModel.displayTitle
+                            self?.updateMenus()
+                            self?.resetHideControlsTimer()
+                        }
                     }
                 }
-            }
 
-            if group.releases.count == 1, let single = releaseActions.first {
-                elements.append(single)
-            } else {
-                elements.append(UIMenu(title: "\(group.title) (\(group.releases.count))", children: releaseActions))
+                if group.releases.count == 1, let single = releaseActions.first {
+                    releaseGroupElements.append(single)
+                } else {
+                    releaseGroupElements.append(UIMenu(title: "\(group.title) (\(group.releases.count))", children: releaseActions))
+                }
             }
+            elements.append(UIMenu(title: "Раздачи трекеров", options: .displayInline, children: releaseGroupElements))
         }
-        qualityButton.menu = UIMenu(title: "Качество", children: elements)
+
+        qualityButton.menu = UIMenu(title: "Качество и транскодирование", children: elements)
     }
 
     // MARK: - Floating HUD Toast (+10s / -10s)

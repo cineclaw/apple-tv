@@ -182,10 +182,23 @@ struct PlayerInfoResponse: Codable, Sendable {
     let subtitles: [SubtitleTrackInfo]?
     let targetFileIdx: Int?
     let videoCodec: String?
+    let width: Int?
+    let height: Int?
+    let transcodeProfiles: [TranscodeProfile]?
+    let transcodeStreamUrl: String?
 
     var effectiveStreamUrl: String? {
         directStreamUrl ?? streamUrl
     }
+}
+
+struct TranscodeProfile: Codable, Sendable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let description: String?
+    let maxHeight: Int?
+    let bitrateKbps: Int?
+    let isDirect: Bool?
 }
 
 struct AudioTrackInfo: Codable, Sendable, Identifiable {

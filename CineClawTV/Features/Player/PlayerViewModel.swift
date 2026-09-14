@@ -28,6 +28,11 @@ final class PlayerViewModel: @unchecked Sendable {
     var playerInfo: PlayerInfoResponse?
     var errorMessage: String?
 
+    // Transcoding State
+    var isTranscoding: Bool = false
+    var activeTranscodeProfile: String = APIConfig.shared.transcodeQuality
+    var selectedAudioTrackIndex: Int = 0
+
     var showResumePrompt: Bool = false
     var resumeSeconds: Double = 0.0
     var autoResume: Bool = false
@@ -41,6 +46,36 @@ final class PlayerViewModel: @unchecked Sendable {
 
     var qualityGroups: [QualityGroup] = []
     var isLoadingTorrents: Bool = false
+
+    var audioTracks: [AudioTrackOption] {
+        if isTranscoding, let serverTracks = playerInfo?.audioTracks, !serverTracks.isEmpty {
+            return serverTracks.map { track in
+                AudioTrackOption(
+                    id: String(track.index),
+                    title: track.title,
+                    language: track.language ?? "",
+                    codec: track.codec ?? "",
+                    channels: track.channels != nil ? "\(track.channels!)ch" : ""
+                )
+            }
+        }
+        return engine.audioTracks
+    }
+
+    var currentAudioTrackId: String {
+        if isTranscoding {
+            return String(selectedAudioTrackIndex)
+        }
+        return engine.currentAudioTrackId
+    }
+
+    var subtitleTracks: [SubtitleTrackOption] {
+        engine.subtitleTracks
+    }
+
+    var currentSubtitleTrackId: String {
+        engine.currentSubtitleTrackId
+    }
 
     private var hideControlsTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -134,37 +169,67 @@ final class PlayerViewModel: @unchecked Sendable {
         await mountAndPlay(seek: 0)
     }
 
+    func determineShouldTranscode(info: PlayerInfoResponse?) -> Bool {
+        switch APIConfig.shared.playbackMode {
+        case .transcodeH264:
+            return true
+        case .direct:
+            return false
+        case .auto:
+            if !DeviceCapabilities.supportsHardwareHEVC {
+                let codec = (info?.videoCodec ?? "").lowercased()
+                let isHevc = codec.contains("hevc") || codec.contains("h265") || codec.contains("x265")
+                let is4K = (info?.width ?? 0) > 1920 || (info?.height ?? 0) > 1080
+                let titleLower = release.title.lowercased()
+                let titleHevc = titleLower.contains("hevc") || titleLower.contains("2160p") || titleLower.contains("x265") || titleLower.contains("h.265")
+                return isHevc || is4K || titleHevc
+            }
+            let is4K = (info?.width ?? 0) > 3840
+            return is4K
+        }
+    }
+
     func mountAndPlay(seek: Double?) async {
         isMounting = true
-        mountStatusText = "Монтирование торрента в TorrServer..."
+        mountStatusText = "Проверка состояния раздачи..."
         errorMessage = nil
 
         do {
-            _ = try await CineClawClient.shared.mountTorrent(
-                tconst: tconst,
-                title: release.title,
-                magnet: release.magnet,
-                hash: release.effectiveHash,
-                type: (season != nil && season! > 0) ? "tvSeries" : "movie",
-                season: season,
-                episode: episode
-            )
+            // 1. Check if server already has remembered/mounted stream for this title
+            var info: PlayerInfoResponse? = try? await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
 
-            var info: PlayerInfoResponse? = nil
-            for attempt in 0..<6 {
-                mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/6)..."
-                do {
-                    let candidate = try await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
-                    if candidate.success == true && (candidate.directStreamUrl != nil || candidate.streamUrl != nil) {
-                        info = candidate
-                        break
+            let serverHash = info?.mediaSourceId ?? ""
+            let needsMount = serverHash.isEmpty || (!release.effectiveHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame && info?.success != true)
+
+            if needsMount {
+                mountStatusText = "Монтирование торрента в TorrServer..."
+                _ = try await CineClawClient.shared.mountTorrent(
+                    tconst: tconst,
+                    title: release.title,
+                    magnet: release.magnet,
+                    hash: release.effectiveHash,
+                    type: (season != nil && season! > 0) ? "tvSeries" : "movie",
+                    season: season,
+                    episode: episode
+                )
+
+                for attempt in 0..<6 {
+                    mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/6)..."
+                    do {
+                        let candidate = try await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
+                        if candidate.success == true && (candidate.directStreamUrl != nil || candidate.streamUrl != nil) {
+                            info = candidate
+                            break
+                        }
+                    } catch {
+                        logger.warning("getPlayerInfo attempt \(attempt + 1) error: \(error.localizedDescription)")
                     }
-                } catch {
-                    logger.warning("getPlayerInfo attempt \(attempt + 1) error: \(error.localizedDescription)")
+                    if attempt < 5 {
+                        try? await Task.sleep(nanoseconds: 1_200_000_000)
+                    }
                 }
-                if attempt < 5 {
-                    try? await Task.sleep(nanoseconds: 1_200_000_000)
-                }
+            } else if !serverHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame {
+                logger.info("Using remembered server source hash: \(serverHash, privacy: .public)")
             }
 
             if info == nil {
@@ -172,19 +237,36 @@ final class PlayerViewModel: @unchecked Sendable {
             }
             self.playerInfo = info
 
-            // Direct MKV stream URL (Infuse / VLC native direct container streaming)
-            let rawPath = info?.directStreamUrl ?? info?.streamUrl
-            guard let path = rawPath, !path.isEmpty else {
-                throw URLError(.badURL)
-            }
-
-            guard let streamURL = APIConfig.shared.torrServerURL(for: path) else {
-                throw URLError(.badURL)
-            }
-
-            logger.info("Playing direct container stream: \(streamURL.absoluteString, privacy: .public)")
-
             let effectiveSeek = seek ?? info?.resumeSeconds ?? 0.0
+            let shouldTranscode = determineShouldTranscode(info: info)
+            self.isTranscoding = shouldTranscode
+
+            let streamURL: URL
+            if shouldTranscode {
+                self.activeTranscodeProfile = APIConfig.shared.transcodeQuality
+                let targetAudio = selectedAudioTrackIndex
+                let totalDur = info?.durationSeconds ?? duration
+                let durParam = totalDur > 0 ? "&duration=\(String(format: "%.2f", totalDur))" : ""
+                let startParam = effectiveSeek > 0 ? String(format: "%.2f", effectiveSeek) : "0"
+                let targetHash = info?.mediaSourceId ?? release.effectiveHash
+                let fileIdx = info?.targetFileIdx ?? 0
+                let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(activeTranscodeProfile)&file_idx=\(fileIdx)&audio=\(targetAudio)&start=\(startParam)\(durParam)&s=\(UUID().uuidString.prefix(8))"
+                guard let url = APIConfig.shared.streamURL(for: transcodePath) else {
+                    throw URLError(.badURL)
+                }
+                streamURL = url
+                logger.info("Playing H.264 transcoded stream: \(streamURL.absoluteString, privacy: .public)")
+            } else {
+                let rawPath = info?.directStreamUrl ?? info?.streamUrl
+                guard let path = rawPath, !path.isEmpty else {
+                    throw URLError(.badURL)
+                }
+                guard let url = APIConfig.shared.streamURL(for: path) else {
+                    throw URLError(.badURL)
+                }
+                streamURL = url
+                logger.info("Playing direct container stream: \(streamURL.absoluteString, privacy: .public)")
+            }
 
             self.isMounting = false
             self.engine.load(url: streamURL, initialSeek: effectiveSeek > 2.0 ? effectiveSeek : nil)
@@ -321,14 +403,59 @@ final class PlayerViewModel: @unchecked Sendable {
         userActivity()
     }
 
-    // Direct in-memory audio track selection (NO rebuffering, NO reload)
+    // Audio track selection (in-memory for direct, seamless stream reload for transcode)
     func selectAudio(trackId: String, title: String? = nil) {
-        logger.info("Direct audio switch requested: trackId='\(trackId)'")
-        engine.selectAudio(trackId: trackId)
+        logger.info("Audio switch requested: trackId='\(trackId)', title='\(title ?? "")'")
+        if isTranscoding {
+            guard let idx = Int(trackId) else { return }
+            if idx != selectedAudioTrackIndex {
+                selectedAudioTrackIndex = idx
+                let cur = engine.currentTime
+                let targetHash = playerInfo?.mediaSourceId ?? release.effectiveHash
+                let fileIdx = playerInfo?.targetFileIdx ?? 0
+                let totalDur = playerInfo?.durationSeconds ?? duration
+                let durParam = totalDur > 0 ? "&duration=\(String(format: "%.2f", totalDur))" : ""
+                let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(activeTranscodeProfile)&file_idx=\(fileIdx)&audio=\(idx)&start=\(String(format: "%.2f", cur))\(durParam)&s=\(UUID().uuidString.prefix(8))"
+                if let url = APIConfig.shared.streamURL(for: transcodePath) {
+                    logger.info("Switching transcode audio to track \(idx): \(url.absoluteString, privacy: .public)")
+                    engine.load(url: url, initialSeek: cur > 2.0 ? cur : nil)
+                }
+            }
+        } else {
+            engine.selectAudio(trackId: trackId)
+        }
 
         if let t = title {
             Task {
                 await CineClawClient.shared.setAudioPreference(imdbId: tconst, title: t)
+            }
+        }
+    }
+
+    func switchTranscodeMode(enableTranscode: Bool, profile: String = "1080p") {
+        guard enableTranscode != isTranscoding || profile != activeTranscodeProfile else { return }
+        let cur = engine.currentTime
+        self.isTranscoding = enableTranscode
+        self.activeTranscodeProfile = profile
+        if enableTranscode {
+            APIConfig.shared.playbackMode = .transcodeH264
+            APIConfig.shared.transcodeQuality = profile
+            let targetAudio = selectedAudioTrackIndex
+            let totalDur = playerInfo?.durationSeconds ?? duration
+            let durParam = totalDur > 0 ? "&duration=\(String(format: "%.2f", totalDur))" : ""
+            let targetHash = playerInfo?.mediaSourceId ?? release.effectiveHash
+            let fileIdx = playerInfo?.targetFileIdx ?? 0
+            let transcodePath = "/api/stream/transcode/\(targetHash)/master.m3u8?profile=\(profile)&file_idx=\(fileIdx)&audio=\(targetAudio)&start=\(String(format: "%.2f", cur))\(durParam)&s=\(UUID().uuidString.prefix(8))"
+            if let url = APIConfig.shared.streamURL(for: transcodePath) {
+                logger.info("Switching to transcoded stream: \(url.absoluteString, privacy: .public)")
+                engine.load(url: url, initialSeek: cur > 2.0 ? cur : nil)
+            }
+        } else {
+            APIConfig.shared.playbackMode = .direct
+            let rawPath = playerInfo?.directStreamUrl ?? playerInfo?.streamUrl ?? ""
+            if let url = APIConfig.shared.streamURL(for: rawPath) {
+                logger.info("Switching to direct stream: \(url.absoluteString, privacy: .public)")
+                engine.load(url: url, initialSeek: cur > 2.0 ? cur : nil)
             }
         }
     }

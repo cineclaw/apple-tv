@@ -284,7 +284,18 @@ final class DetailsViewModel {
             let list = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: initialTitle)
             self.torrents = list
             self.qualityGroups = groupReleases(list)
-            if isTv {
+
+            // Prefer server remembered release if available (e.g. chosen from web)
+            var matchedSaved: TorrentRelease? = nil
+            let targetSeason = isTv ? selectedSeasonNumber : 0
+            if let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: targetSeason, episode: nil),
+               let savedHash = info.mediaSourceId, !savedHash.isEmpty {
+                matchedSaved = list.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame })
+            }
+
+            if let saved = matchedSaved {
+                self.selectedRelease = saved
+            } else if isTv {
                 self.selectedRelease = selectBestRelease(forSeason: selectedSeasonNumber)
             } else {
                 self.selectedRelease = selectBestRelease()

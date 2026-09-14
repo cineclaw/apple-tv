@@ -73,7 +73,21 @@ final class HomeViewModel {
         }
 
         let groups = TorrentSelectionHelper.groupReleases(torrents)
-        guard let bestRelease = TorrentSelectionHelper.selectBestRelease(from: torrents, targetSeason: item.season) else {
+
+        // Prefer server remembered release if available (e.g. chosen from web)
+        var selectedRel: TorrentRelease? = nil
+        if let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: item.season, episode: item.episode),
+           let savedHash = info.mediaSourceId, !savedHash.isEmpty {
+            if let matched = torrents.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame }) {
+                selectedRel = matched
+            }
+        }
+
+        if selectedRel == nil {
+            selectedRel = TorrentSelectionHelper.selectBestRelease(from: torrents, targetSeason: item.season)
+        }
+
+        guard let finalRelease = selectedRel else {
             throw NSError(domain: "CineClaw", code: 404, userInfo: [NSLocalizedDescriptionKey: "Подходящая раздача не найдена"])
         }
 
@@ -81,7 +95,7 @@ final class HomeViewModel {
 
         return PlaybackTarget(
             tconst: effectiveTconst,
-            release: bestRelease,
+            release: finalRelease,
             title: cleanTitle,
             season: item.season,
             episode: item.episode,

@@ -204,6 +204,76 @@ struct SettingsView: View {
                                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.obsidianBorder, lineWidth: 1))
                                 )
 
+                                // Section: Transcoding & Hardware Compatibility
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Text("Режим совместимости и транскодирования")
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundColor(.textSecondary)
+
+                                    Text(DeviceCapabilities.isLegacyAppleTV
+                                        ? "Обнаружен Apple TV HD (A8) без аппаратной поддержки H.265. Рекомендуется режим «Всегда H.264» или «Авто»."
+                                        : "Управление перекодированием тяжелых форматов (H.265, 4K) на сервере.")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.textMuted)
+
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Режим воспроизведения:")
+                                            .font(.system(size: 17, weight: .semibold))
+                                            .foregroundColor(.textPrimary)
+
+                                        HStack(spacing: 14) {
+                                            ForEach(PlaybackMode.allCases) { mode in
+                                                Button {
+                                                    apiConfig.playbackMode = mode
+                                                } label: {
+                                                    Text(mode.title)
+                                                        .font(.system(size: 18, weight: .semibold))
+                                                        .foregroundColor(apiConfig.playbackMode == mode ? .black : .white)
+                                                        .padding(.horizontal, 20)
+                                                        .padding(.vertical, 12)
+                                                        .background(
+                                                            RoundedRectangle(cornerRadius: 10)
+                                                                .fill(apiConfig.playbackMode == mode ? Color.emeraldPrimary : Color.obsidianCard)
+                                                        )
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Качество транскодирования:")
+                                            .font(.system(size: 17, weight: .semibold))
+                                            .foregroundColor(.textPrimary)
+
+                                        HStack(spacing: 14) {
+                                            ForEach(["1080p", "720p", "480p"], id: \.self) { q in
+                                                Button {
+                                                    apiConfig.transcodeQuality = q
+                                                } label: {
+                                                    Text(q)
+                                                        .font(.system(size: 18, weight: .semibold))
+                                                        .foregroundColor(apiConfig.transcodeQuality == q ? .black : .white)
+                                                        .padding(.horizontal, 22)
+                                                        .padding(.vertical, 10)
+                                                        .background(
+                                                            RoundedRectangle(cornerRadius: 10)
+                                                                .fill(apiConfig.transcodeQuality == q ? Color.emeraldPrimary : Color.obsidianCard)
+                                                        )
+                                                }
+                                                .buttonStyle(.plain)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(24)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(Color.obsidianCard)
+                                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.obsidianBorder, lineWidth: 1))
+                                )
+
                                 // Section: Audio Passthrough
                                 VStack(alignment: .leading, spacing: 14) {
                                     Toggle(isOn: $apiConfig.audioPassthrough) {
@@ -239,7 +309,8 @@ struct SettingsView: View {
                                         InfoRow(label: "Версия", value: "v1.2.0 (tvOS 18+)")
                                         InfoRow(label: "Медиа-плеер", value: "KSPlayer (Metal + FFmpeg)")
                                         InfoRow(label: "Торрент-движок", value: "TorrServer Turbo (Порт 8092)")
-                                        InfoRow(label: "Платформа", value: "Apple TV 4K")
+                                        InfoRow(label: "Платформа", value: DeviceCapabilities.isLegacyAppleTV ? "Apple TV HD (A8)" : "Apple TV 4K")
+                                        InfoRow(label: "Аппаратный H.265", value: DeviceCapabilities.supportsHardwareHEVC ? "Поддерживается" : "Серверный транскод (H.264)")
                                     }
                                     .padding(24)
                                     .background(
