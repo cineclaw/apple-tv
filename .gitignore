@@ -1,0 +1,15 @@
+# Xcode
+.build/
+DerivedData/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+*.xcuserdata
+xcuserdata/
+
+# OS
+.DS_Store
+
+# Backups & scratch
+Backup/
+*.orig
+*.bak

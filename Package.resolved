@@ -1,0 +1,24 @@
+{
+  "originHash" : "377c7074c6498fe93a6b61e37ee2bb1799e74ac351ae3e0f2d609b0c849cd3a1",
+  "pins" : [
+    {
+      "identity" : "nuke",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/kean/Nuke",
+      "state" : {
+        "revision" : "83e19143355b02e9261edb2323b3e1e93287ebb9",
+        "version" : "12.9.0"
+      }
+    },
+    {
+      "identity" : "swiftvlc",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/harflabs/SwiftVLC",
+      "state" : {
+        "revision" : "8a54d1e44df87d2a6a4efe2d16e847ebd3564703",
+        "version" : "1.1.0-beta.12"
+      }
+    }
+  ],
+  "version" : 3
+}

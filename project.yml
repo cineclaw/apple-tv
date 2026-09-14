@@ -1,0 +1,41 @@
+name: CineClawTV
+options:
+  bundleIdPrefix: com.cineclaw
+  deploymentTarget:
+    tvOS: "18.0"
+packages:
+  SwiftVLC:
+    url: https://github.com/harflabs/SwiftVLC
+    exactVersion: 1.1.0-beta.12
+  Nuke:
+    url: https://github.com/kean/Nuke
+    exactVersion: 12.9.0
+targets:
+  CineClawTV:
+    type: application
+    platform: tvOS
+    deploymentTarget: "18.0"
+    sources:
+      - CineClawTV
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.andvikt.cineclaw
+      PRODUCT_NAME: CineClaw
+      SWIFT_VERSION: "6.0"
+      GENERATE_INFOPLIST_FILE: false
+      INFOPLIST_FILE: CineClawTV/Resources/Info.plist
+      CURRENT_PROJECT_VERSION: 1
+      MARKETING_VERSION: 1.0.0
+      ASSETCATALOG_COMPILER_APPICON_NAME: ""
+      ENABLE_USER_SCRIPT_SANDBOXING: NO
+      DEVELOPMENT_TEAM: 47YY495Y8D
+      CODE_SIGN_STYLE: Automatic
+      CODE_SIGN_IDENTITY: "Apple Development"
+      CODE_SIGNING_REQUIRED: YES
+      CODE_SIGNING_ALLOWED: YES
+    dependencies:
+      - package: SwiftVLC
+        product: SwiftVLC
+      - package: Nuke
+        product: Nuke
+      - package: Nuke
+        product: NukeUI
