@@ -6,6 +6,7 @@ enum DetailsFocusField: Hashable {
     case play
     case watchlist
     case quality
+    case refreshTorrents
     case critics
 }
 
@@ -258,6 +259,25 @@ struct DetailsView: View {
                                         .buttonStyle(EmeraldButtonStyle(isPrimary: false))
                                         .focused($focusedField, equals: .quality)
                                     }
+
+                                    Button {
+                                        Task { await viewModel.refreshTorrents() }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            if viewModel.isRefreshingTorrents {
+                                                ProgressView()
+                                                    .tint(.textPrimary)
+                                                    .scaleEffect(0.9)
+                                                Text("Поиск...")
+                                            } else {
+                                                Image(systemName: "arrow.clockwise")
+                                                Text("Обновить")
+                                            }
+                                        }
+                                    }
+                                    .buttonStyle(EmeraldButtonStyle(isPrimary: false))
+                                    .focused($focusedField, equals: .refreshTorrents)
+                                    .disabled(viewModel.isRefreshingTorrents)
                                 }
                                 .padding(.top, 16)
                             }

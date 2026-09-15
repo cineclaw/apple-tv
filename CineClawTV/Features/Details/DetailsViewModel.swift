@@ -30,6 +30,7 @@ final class DetailsViewModel {
     var qualityGroups: [QualityGroup] = []
     var selectedRelease: TorrentRelease?
     var isLoadingTorrents: Bool = true
+    var isRefreshingTorrents: Bool = false
     var inWatchlist: Bool = false
 
     var isTv: Bool {
@@ -338,6 +339,32 @@ final class DetailsViewModel {
             self.logger.error("Failed to load torrents for \(self.initialTitle ?? self.effectiveTconst): \(error.localizedDescription)")
         }
         isLoadingTorrents = false
+    }
+
+    func refreshTorrents() async {
+        guard !isRefreshingTorrents else { return }
+        isRefreshingTorrents = true
+        do {
+            let imdbIdParam = effectiveTconst.hasPrefix("tt") ? effectiveTconst : nil
+            let targetSeason = isTv ? selectedSeasonNumber : 0
+            let list = try await CineClawClient.shared.getTorrents(
+                imdbId: imdbIdParam,
+                query: initialTitle,
+                season: targetSeason > 0 ? targetSeason : nil,
+                refreshCache: true
+            )
+            self.torrents = list
+            self.qualityGroups = groupReleases(list, forSeason: isTv ? selectedSeasonNumber : nil)
+
+            if isTv {
+                self.selectedRelease = selectBestRelease(forSeason: selectedSeasonNumber)
+            } else {
+                self.selectedRelease = selectBestRelease()
+            }
+        } catch {
+            self.logger.error("Failed to refresh torrents for \(self.initialTitle ?? self.effectiveTconst): \(error.localizedDescription)")
+        }
+        isRefreshingTorrents = false
     }
 
     func fetchCritics() async {

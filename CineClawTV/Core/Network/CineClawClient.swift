@@ -116,11 +116,12 @@ final class CineClawClient: Sendable {
     }
 
     // MARK: - Torrents & Streaming
-    func getTorrents(imdbId: String?, query: String?, season: Int? = nil) async throws -> [TorrentRelease] {
+    func getTorrents(imdbId: String?, query: String?, season: Int? = nil, refreshCache: Bool = false) async throws -> [TorrentRelease] {
         var items: [URLQueryItem] = []
         if let id = imdbId, !id.isEmpty { items.append(URLQueryItem(name: "imdb_id", value: id)) }
         if let q = query, !q.isEmpty { items.append(URLQueryItem(name: "q", value: q)) }
         if let s = season, s > 0 { items.append(URLQueryItem(name: "season", value: "\(s)")) }
+        if refreshCache { items.append(URLQueryItem(name: "refresh_cache", value: "true")) }
 
         guard let url = makeURL(path: "/torrents", queryItems: items) else {
             throw URLError(.badURL)
