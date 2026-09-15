@@ -67,18 +67,19 @@ final class HomeViewModel {
         }
 
         let imdbIdParam = effectiveTconst.hasPrefix("tt") ? effectiveTconst : nil
-        let torrents = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: cleanTitle)
+        let torrents = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: cleanTitle, season: item.season)
         guard !torrents.isEmpty else {
             throw NSError(domain: "CineClaw", code: 404, userInfo: [NSLocalizedDescriptionKey: "Раздачи не найдены"])
         }
 
-        let groups = TorrentSelectionHelper.groupReleases(torrents)
+        let groups = TorrentSelectionHelper.groupReleases(torrents, forSeason: item.season)
 
         // Prefer server remembered release if available (e.g. chosen from web)
         var selectedRel: TorrentRelease? = nil
         if let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: item.season, episode: item.episode),
            let savedHash = info.mediaSourceId, !savedHash.isEmpty {
-            if let matched = torrents.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame }) {
+            if let matched = torrents.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame }),
+               TorrentSelectionHelper.seasonMatchScore(matched, targetSeason: item.season) >= 0 {
                 selectedRel = matched
             }
         }

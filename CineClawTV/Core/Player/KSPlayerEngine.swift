@@ -144,6 +144,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
+        options.videoAdaptable = false
         options.preferredForwardBufferDuration = 0.0
         options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
@@ -174,11 +175,10 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         let layer = KSPlayerLayer(url: url, isAutoPlay: true, options: options, delegate: self)
         self.playerLayer = layer
 
-        if let av = (layer.player as? KSAVPlayer)?.player {
-            av.automaticallyWaitsToMinimizeStalling = true
-        }
-
         if let videoView = layer.player.view {
+            videoView.contentMode = .scaleAspectFit
+            videoView.layer.contentsScale = UIScreen.main.scale
+            videoView.contentScaleFactor = UIScreen.main.scale
             onVideoViewReady?(videoView)
         }
     }
@@ -197,6 +197,7 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.hardwareDecode = true
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
+        options.videoAdaptable = false
         options.preferredForwardBufferDuration = 0.0
         options.maxBufferDuration = 90.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD

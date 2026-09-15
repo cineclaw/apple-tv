@@ -116,10 +116,11 @@ final class CineClawClient: Sendable {
     }
 
     // MARK: - Torrents & Streaming
-    func getTorrents(imdbId: String?, query: String?) async throws -> [TorrentRelease] {
+    func getTorrents(imdbId: String?, query: String?, season: Int? = nil) async throws -> [TorrentRelease] {
         var items: [URLQueryItem] = []
         if let id = imdbId, !id.isEmpty { items.append(URLQueryItem(name: "imdb_id", value: id)) }
         if let q = query, !q.isEmpty { items.append(URLQueryItem(name: "q", value: q)) }
+        if let s = season, s > 0 { items.append(URLQueryItem(name: "season", value: "\(s)")) }
 
         guard let url = makeURL(path: "/torrents", queryItems: items) else {
             throw URLError(.badURL)
@@ -139,20 +140,43 @@ final class CineClawClient: Sendable {
         return try decoder.decode(TmdbResolveResponse.self, from: data)
     }
 
-    func mountTorrent(tconst: String, title: String?, magnet: String?, hash: String?, type: String? = nil, season: Int? = nil, episode: Int? = nil) async throws -> Bool {
+    func mountTorrent(
+        tconst: String,
+        title: String?,
+        magnet: String?,
+        hash: String?,
+        type: String? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        torrentId: String? = nil,
+        tracker: String? = nil
+    ) async throws -> Bool {
         guard let url = makeURL(path: "/api/stream/mount") else {
             throw URLError(.badURL)
         }
-        let effectiveMagnet = magnet ?? (hash != nil ? "magnet:?xt=urn:btih:\(hash!)" : "")
+        let cleanHash = hash?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasValidFullHash = cleanHash != nil && cleanHash!.count >= 32
+        let effectiveMagnet: String? = {
+            if let m = magnet, !m.isEmpty { return m }
+            if hasValidFullHash { return "magnet:?xt=urn:btih:\(cleanHash!)" }
+            return nil
+        }()
+        let effectiveTorrentId: String? = {
+            if let tid = torrentId, !tid.isEmpty { return tid }
+            if let h = cleanHash, !h.isEmpty && h.count < 32 { return h }
+            return nil
+        }()
         let effectiveType = type ?? (season != nil && season! > 0 ? "tvSeries" : "movie")
         let payload = MountTorrentRequest(
             tconst: tconst,
             title: title,
             magnet: effectiveMagnet,
-            hash: hash,
+            hash: hasValidFullHash ? cleanHash : nil,
             type: effectiveType,
             season: season,
-            episode: episode
+            episode: episode,
+            torrentId: effectiveTorrentId,
+            tracker: tracker
         )
         let body = try JSONEncoder().encode(payload)
         let req = makeRequest(url: url, method: "POST", body: body)
@@ -185,6 +209,25 @@ final class CineClawClient: Sendable {
             throw URLError(.badServerResponse)
         }
         return try decoder.decode(PlayerInfoResponse.self, from: data)
+    }
+
+    func getStreamStats(hash: String?, tconst: String?, season: Int? = nil, episode: Int? = nil, duration: Double? = nil) async throws -> StreamStatsResponse {
+        var queryItems: [URLQueryItem] = []
+        if let h = hash, !h.isEmpty { queryItems.append(URLQueryItem(name: "hash", value: h)) }
+        if let t = tconst, !t.isEmpty { queryItems.append(URLQueryItem(name: "tconst", value: t)) }
+        if let s = season, s > 0 { queryItems.append(URLQueryItem(name: "season", value: "\(s)")) }
+        if let e = episode, e > 0 { queryItems.append(URLQueryItem(name: "episode", value: "\(e)")) }
+        if let d = duration, d > 0 { queryItems.append(URLQueryItem(name: "duration", value: "\(Int(d))")) }
+
+        guard let url = makeURL(path: "/api/stream/stats", queryItems: queryItems) else {
+            throw URLError(.badURL)
+        }
+        let req = makeRequest(url: url)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+        return try decoder.decode(StreamStatsResponse.self, from: data)
     }
 
     // MARK: - Playback Progress & Watchlist

@@ -164,6 +164,13 @@ struct MountTorrentRequest: Codable, Sendable {
     let type: String?
     let season: Int?
     let episode: Int?
+    let torrentId: String?
+    let tracker: String?
+
+    enum CodingKeys: String, CodingKey {
+        case tconst, title, magnet, hash, type, season, episode, tracker
+        case torrentId = "torrent_id"
+    }
 }
 
 struct PlayerInfoResponse: Codable, Sendable {
@@ -199,6 +206,24 @@ struct TranscodeProfile: Codable, Sendable, Identifiable, Hashable {
     let maxHeight: Int?
     let bitrateKbps: Int?
     let isDirect: Bool?
+}
+
+struct StreamStatsResponse: Codable, Sendable {
+    let downloadSpeed: Int64
+    let downloadSpeedFmt: String
+    let uploadSpeed: Int64
+    let uploadSpeedFmt: String
+    let connectedSeeders: Int
+    let activePeers: Int
+    let totalPeers: Int
+    let videoBitrate: Int64
+    let videoBitrateFmt: String
+    let speedRatio: Double
+    let signalLevel: Int
+    let signalStatus: String
+    let preloadedBytes: Int64
+    let loadedSize: Int64
+    let torrentSize: Int64
 }
 
 struct AudioTrackInfo: Codable, Sendable, Identifiable {
@@ -274,13 +299,19 @@ enum TorrentSelectionHelper {
         VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC)
     }()
 
-    static func groupReleases(_ list: [TorrentRelease]) -> [QualityGroup] {
+    static func groupReleases(_ list: [TorrentRelease], forSeason targetSeason: Int? = nil) -> [QualityGroup] {
+        let filteredList: [TorrentRelease] = {
+            guard let s = targetSeason, s > 0 else { return list }
+            let matching = list.filter { seasonMatchScore($0, targetSeason: s) >= 0 }
+            return matching.isEmpty ? list : matching
+        }()
+
         var g4k: [TorrentRelease] = []
         var g1080: [TorrentRelease] = []
         var g720: [TorrentRelease] = []
         var gSD: [TorrentRelease] = []
 
-        for r in list {
+        for r in filteredList {
             let t = r.effectiveTier.lowercased()
             if t.contains("4k") || t.contains("2160") {
                 g4k.append(r)

@@ -190,7 +190,21 @@ struct DetailsView: View {
                                     Button {
                                         let s = viewModel.isTv ? viewModel.selectedSeasonNumber : nil
                                         let e = viewModel.isTv ? (viewModel.episodes.first?.episodeNumber ?? 1) : nil
-                                        let rel = (s != nil ? viewModel.selectBestRelease(forSeason: s!) : nil) ?? viewModel.selectedRelease
+                                        let rel: TorrentRelease? = {
+                                            if let chosen = viewModel.selectedRelease {
+                                                if let targetS = s {
+                                                    if viewModel.seasonMatchScore(chosen, targetSeason: targetS) >= 0 {
+                                                        return chosen
+                                                    }
+                                                } else {
+                                                    return chosen
+                                                }
+                                            }
+                                            if let targetS = s {
+                                                return viewModel.selectBestRelease(forSeason: targetS)
+                                            }
+                                            return viewModel.selectBestRelease()
+                                        }()
                                         if let r = rel {
                                             activePlayback = PlaybackTarget(
                                                 tconst: viewModel.effectiveTconst,
@@ -470,7 +484,14 @@ struct DetailsView: View {
     }
 
     private func startEpisodePlayback(_ ep: EpisodeInfo) {
-        let rel = viewModel.selectBestRelease(forSeason: ep.seasonNumber) ?? viewModel.selectedRelease
+        let rel: TorrentRelease? = {
+            if let chosen = viewModel.selectedRelease {
+                if viewModel.seasonMatchScore(chosen, targetSeason: ep.seasonNumber) >= 0 {
+                    return chosen
+                }
+            }
+            return viewModel.selectBestRelease(forSeason: ep.seasonNumber) ?? viewModel.selectedRelease
+        }()
         if let r = rel {
             activePlayback = PlaybackTarget(
                 tconst: viewModel.effectiveTconst,

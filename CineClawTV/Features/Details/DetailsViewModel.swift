@@ -271,9 +271,43 @@ final class DetailsViewModel {
             }
         }
         if isTv {
-            if let bestForSeason = selectBestRelease(forSeason: number) {
+            self.qualityGroups = groupReleases(self.torrents, forSeason: number)
+            if let current = selectedRelease, seasonMatchScore(current, targetSeason: number) >= 0 {
+                // Keep currently selected release
+            } else if let bestForSeason = selectBestRelease(forSeason: number) {
                 self.selectedRelease = bestForSeason
             }
+
+            Task { [weak self] in
+                await self?.fetchTorrentsForSeason(number)
+            }
+        }
+    }
+
+    func fetchTorrentsForSeason(_ sNum: Int) async {
+        guard effectiveTconst.hasPrefix("tt") else { return }
+        do {
+            let list = try await CineClawClient.shared.getTorrents(imdbId: effectiveTconst, query: initialTitle, season: sNum)
+            if !list.isEmpty {
+                var existingKeys = Set(self.torrents.map { $0.effectiveHash.isEmpty ? ($0.id ?? $0.title) : $0.effectiveHash })
+                var merged = self.torrents
+                for item in list {
+                    let key = item.effectiveHash.isEmpty ? (item.id ?? item.title) : item.effectiveHash
+                    if !existingKeys.contains(key) {
+                        existingKeys.insert(key)
+                        merged.append(item)
+                    }
+                }
+                self.torrents = merged
+                if self.selectedSeasonNumber == sNum {
+                    self.qualityGroups = groupReleases(merged, forSeason: sNum)
+                    if self.selectedRelease == nil || seasonMatchScore(self.selectedRelease!, targetSeason: sNum) < 0 {
+                        self.selectedRelease = selectBestRelease(forSeason: sNum)
+                    }
+                }
+            }
+        } catch {
+            logger.warning("Failed to fetch season \(sNum) torrents: \(error.localizedDescription)")
         }
     }
 
@@ -281,19 +315,19 @@ final class DetailsViewModel {
         isLoadingTorrents = true
         do {
             let imdbIdParam = effectiveTconst.hasPrefix("tt") ? effectiveTconst : nil
-            let list = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: initialTitle)
+            let targetSeason = isTv ? selectedSeasonNumber : 0
+            let list = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: initialTitle, season: targetSeason > 0 ? targetSeason : nil)
             self.torrents = list
-            self.qualityGroups = groupReleases(list)
+            self.qualityGroups = groupReleases(list, forSeason: isTv ? selectedSeasonNumber : nil)
 
             // Prefer server remembered release if available (e.g. chosen from web)
             var matchedSaved: TorrentRelease? = nil
-            let targetSeason = isTv ? selectedSeasonNumber : 0
             if let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: targetSeason, episode: nil),
                let savedHash = info.mediaSourceId, !savedHash.isEmpty {
                 matchedSaved = list.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame })
             }
 
-            if let saved = matchedSaved {
+            if let saved = matchedSaved, isTv ? (seasonMatchScore(saved, targetSeason: selectedSeasonNumber) >= 0) : true {
                 self.selectedRelease = saved
             } else if isTv {
                 self.selectedRelease = selectBestRelease(forSeason: selectedSeasonNumber)
@@ -362,8 +396,8 @@ final class DetailsViewModel {
         }
     }
 
-    private func groupReleases(_ list: [TorrentRelease]) -> [QualityGroup] {
-        TorrentSelectionHelper.groupReleases(list)
+    private func groupReleases(_ list: [TorrentRelease], forSeason targetSeason: Int? = nil) -> [QualityGroup] {
+        TorrentSelectionHelper.groupReleases(list, forSeason: targetSeason)
     }
 
     func seasonMatchScore(_ r: TorrentRelease, targetSeason: Int?) -> Int {

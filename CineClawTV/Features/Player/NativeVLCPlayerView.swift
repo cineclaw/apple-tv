@@ -369,6 +369,123 @@ final class TvScrubberControl: UIControl {
     }
 }
 
+// MARK: - Cellular Signal Strength Badge for Apple TV
+final class TvSignalStrengthView: UIView {
+    private let barsStack = UIStackView()
+    private var barViews: [UIView] = []
+    private let speedLabel = UILabel()
+    private let seedsLabel = UILabel()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupViews()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupViews() {
+        backgroundColor = UIColor.black.withAlphaComponent(0.65)
+        layer.cornerRadius = 14
+        layer.borderColor = UIColor.white.withAlphaComponent(0.18).cgColor
+        layer.borderWidth = 1
+        clipsToBounds = true
+
+        let containerStack = UIStackView()
+        containerStack.translatesAutoresizingMaskIntoConstraints = false
+        containerStack.axis = .horizontal
+        containerStack.spacing = 8
+        containerStack.alignment = .center
+        addSubview(containerStack)
+
+        // Stepped bars stack (4 bars)
+        barsStack.translatesAutoresizingMaskIntoConstraints = false
+        barsStack.axis = .horizontal
+        barsStack.spacing = 2
+        barsStack.alignment = .bottom
+
+        let heights: [CGFloat] = [4, 7, 10, 13]
+        for h in heights {
+            let bar = UIView()
+            bar.translatesAutoresizingMaskIntoConstraints = false
+            bar.layer.cornerRadius = 1.5
+            bar.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+            NSLayoutConstraint.activate([
+                bar.widthAnchor.constraint(equalToConstant: 3),
+                bar.heightAnchor.constraint(equalToConstant: h)
+            ])
+            barsStack.addArrangedSubview(bar)
+            barViews.append(bar)
+        }
+        containerStack.addArrangedSubview(barsStack)
+
+        // Speed label
+        speedLabel.translatesAutoresizingMaskIntoConstraints = false
+        speedLabel.font = UIFont.monospacedDigitSystemFont(ofSize: 14, weight: .bold)
+        speedLabel.textColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 1.0)
+        speedLabel.text = "0 КБ/с"
+        containerStack.addArrangedSubview(speedLabel)
+
+        // Seeds count label
+        seedsLabel.translatesAutoresizingMaskIntoConstraints = false
+        seedsLabel.font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        seedsLabel.textColor = UIColor.white.withAlphaComponent(0.85)
+        seedsLabel.text = ""
+        seedsLabel.isHidden = true
+        containerStack.addArrangedSubview(seedsLabel)
+
+        NSLayoutConstraint.activate([
+            containerStack.topAnchor.constraint(equalTo: topAnchor, constant: 5),
+            containerStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -5),
+            containerStack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            containerStack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10)
+        ])
+    }
+
+    func update(stats: StreamStatsResponse?) {
+        guard let stats = stats else {
+            for bar in barViews {
+                bar.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+            }
+            speedLabel.text = "0 КБ/с"
+            speedLabel.textColor = UIColor.white.withAlphaComponent(0.5)
+            seedsLabel.isHidden = true
+            return
+        }
+
+        let level = stats.signalLevel
+        let activeColor: UIColor
+        if level >= 3 {
+            activeColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 1.0) // Emerald green
+        } else if level == 2 {
+            activeColor = UIColor(red: 245/255, green: 158/255, blue: 11/255, alpha: 1.0) // Amber
+        } else if level == 1 {
+            activeColor = UIColor(red: 239/255, green: 68/255, blue: 68/255, alpha: 1.0) // Red
+        } else {
+            activeColor = UIColor.white.withAlphaComponent(0.25)
+        }
+
+        for (idx, bar) in barViews.enumerated() {
+            if idx < level {
+                bar.backgroundColor = activeColor
+            } else {
+                bar.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+            }
+        }
+
+        speedLabel.text = stats.downloadSpeedFmt.isEmpty ? "0 КБ/с" : stats.downloadSpeedFmt
+        speedLabel.textColor = level > 0 ? activeColor : UIColor.white.withAlphaComponent(0.6)
+
+        if stats.connectedSeeders > 0 {
+            seedsLabel.text = "🌱 \(stats.connectedSeeders)"
+            seedsLabel.isHidden = false
+        } else {
+            seedsLabel.isHidden = true
+        }
+    }
+}
+
 final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizerDelegate {
     let viewModel: PlayerViewModel
     var onDismiss: (() -> Void)?
@@ -380,6 +497,12 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     private let controlsContainer = UIView()
     private let titleLabel = UILabel()
     private let scrubberControl = TvScrubberControl()
+
+    // Top Right Header Bar (Signal Speed & Quality Badges)
+    private let topBarContainer = UIStackView()
+    private let signalStrengthView = TvSignalStrengthView()
+    private let qualityBadge = UILabel()
+    private let modeBadge = UILabel()
 
     private let buttonsStack = UIStackView()
     private let subtitlesButton = UIButton(type: .system)
@@ -420,6 +543,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
 
         setupVideoSurface()
         setupScrim()
+        setupTopBar()
         setupControls()
         setupHUDToast()
         setupGestures()
@@ -455,6 +579,9 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         if videoSurfaceView === surface { return }
         videoSurfaceView?.removeFromSuperview()
         videoSurfaceView = surface
+        surface.contentMode = .scaleAspectFit
+        surface.layer.contentsScale = UIScreen.main.scale
+        surface.contentScaleFactor = UIScreen.main.scale
         surface.translatesAutoresizingMaskIntoConstraints = false
         view.insertSubview(surface, at: 0)
 
@@ -491,6 +618,45 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
             scrimView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scrimView.heightAnchor.constraint(equalToConstant: 280)
         ])
+    }
+
+    // MARK: - Top Right Header Bar (Signal Strength & Quality/Mode Badges)
+    private func setupTopBar() {
+        topBarContainer.translatesAutoresizingMaskIntoConstraints = false
+        topBarContainer.axis = .horizontal
+        topBarContainer.spacing = 10
+        topBarContainer.alignment = .center
+        topBarContainer.alpha = 0.0
+        view.addSubview(topBarContainer)
+
+        signalStrengthView.translatesAutoresizingMaskIntoConstraints = false
+        topBarContainer.addArrangedSubview(signalStrengthView)
+
+        setupBadgeLabel(qualityBadge, text: viewModel.release.effectiveTier, isHighlight: true)
+        topBarContainer.addArrangedSubview(qualityBadge)
+
+        let modeText = viewModel.isTranscoding ? "H.264" : "DIRECT STREAM"
+        setupBadgeLabel(modeBadge, text: modeText, isHighlight: false)
+        topBarContainer.addArrangedSubview(modeBadge)
+
+        NSLayoutConstraint.activate([
+            topBarContainer.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            topBarContainer.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -60),
+            topBarContainer.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    private func setupBadgeLabel(_ label: UILabel, text: String, isHighlight: Bool) {
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        label.textColor = isHighlight ? UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 1.0) : UIColor.white.withAlphaComponent(0.8)
+        label.backgroundColor = isHighlight ? UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 0.15) : UIColor.white.withAlphaComponent(0.12)
+        label.layer.borderColor = isHighlight ? UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 0.4).cgColor : UIColor.white.withAlphaComponent(0.18).cgColor
+        label.layer.borderWidth = 1
+        label.layer.cornerRadius = 6
+        label.clipsToBounds = true
+        label.textAlignment = .center
+        label.text = " \(text) "
     }
 
     // MARK: - Bottom Transport Controls Deck
@@ -915,6 +1081,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         updateMenus()
         UIView.animate(withDuration: 0.25) {
             self.controlsContainer.alpha = 1.0
+            self.topBarContainer.alpha = 1.0
             self.scrimView.alpha = 1.0
         } completion: { _ in
             self.setNeedsFocusUpdate()
@@ -931,6 +1098,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         areControlsVisible = false
         UIView.animate(withDuration: 0.25) {
             self.controlsContainer.alpha = 0.0
+            self.topBarContainer.alpha = 0.0
             self.scrimView.alpha = 0.0
         }
     }
@@ -972,6 +1140,11 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         let cur = viewModel.engine.currentTime
         let dur = viewModel.duration
         scrubberControl.updateUI(currentTime: cur, duration: dur)
+
+        // Update real-time swarm throughput & cellular signal
+        signalStrengthView.update(stats: viewModel.streamStats)
+        qualityBadge.text = " \(viewModel.release.effectiveTier) "
+        modeBadge.text = viewModel.isTranscoding ? " H.264 " : " DIRECT STREAM "
 
         // If audio tracks just loaded, refresh menu
         if (audioButton.menu?.children.count ?? 0) <= 1 && !viewModel.engine.audioTracks.isEmpty {

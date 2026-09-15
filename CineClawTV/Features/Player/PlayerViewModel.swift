@@ -26,6 +26,7 @@ final class PlayerViewModel: @unchecked Sendable {
     var isMounting: Bool = false
     var mountStatusText: String = "Подготовка видеопотока..."
     var playerInfo: PlayerInfoResponse?
+    var streamStats: StreamStatsResponse?
     var errorMessage: String?
 
     // Transcoding State
@@ -198,35 +199,50 @@ final class PlayerViewModel: @unchecked Sendable {
             // 1. Check if server already has remembered/mounted stream for this title
             var info: PlayerInfoResponse? = try? await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
 
+            let targetHash = release.infoHash ?? release.hash ?? (release.effectiveHash.count >= 32 ? release.effectiveHash : nil)
             let serverHash = info?.mediaSourceId ?? ""
             let hasActiveStream = info?.success == true && (info?.directStreamUrl?.isEmpty == false || info?.streamUrl?.isEmpty == false)
-            let isDifferentRelease = !release.effectiveHash.isEmpty && !serverHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame
+            let isDifferentRelease = (targetHash != nil && !serverHash.isEmpty && serverHash.caseInsensitiveCompare(targetHash!) != .orderedSame) ||
+                (!release.effectiveHash.isEmpty && !serverHash.isEmpty && serverHash.caseInsensitiveCompare(release.effectiveHash) != .orderedSame)
             let needsMount = !hasActiveStream || isDifferentRelease
 
             if needsMount {
                 mountStatusText = "Монтирование торрента в TorrServer..."
-                _ = try await CineClawClient.shared.mountTorrent(
+                let mounted = try await CineClawClient.shared.mountTorrent(
                     tconst: tconst,
                     title: release.title,
                     magnet: release.magnet,
-                    hash: release.effectiveHash,
+                    hash: release.infoHash ?? release.hash,
                     type: (season != nil && season! > 0) ? "tvSeries" : "movie",
                     season: season,
-                    episode: episode
+                    episode: episode,
+                    torrentId: release.id,
+                    tracker: release.tracker
                 )
+                if !mounted {
+                    throw NSError(domain: "CineClaw", code: -1004, userInfo: [NSLocalizedDescriptionKey: "Сервер не смог подготовить раздачу для воспроизведения"])
+                }
 
-                for attempt in 0..<10 {
-                    mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/10)..."
+                for attempt in 0..<12 {
+                    mountStatusText = attempt == 0 ? "Определение серии и подготовка потока..." : "Получение метаданных серии (\(attempt + 1)/12)..."
                     do {
                         let candidate = try await CineClawClient.shared.getPlayerInfo(tconst: tconst, season: season, episode: episode)
                         if candidate.success == true && (candidate.directStreamUrl?.isEmpty == false || candidate.streamUrl?.isEmpty == false) {
-                            info = candidate
-                            break
+                            if let target = targetHash?.lowercased(), !target.isEmpty {
+                                if let candHash = candidate.mediaSourceId?.lowercased(), candHash == target {
+                                    info = candidate
+                                    break
+                                }
+                                logger.info("Candidate stream hash '\(candidate.mediaSourceId ?? "")' != target '\(target)'. Waiting for switch...")
+                            } else {
+                                info = candidate
+                                break
+                            }
                         }
                     } catch {
                         logger.warning("getPlayerInfo attempt \(attempt + 1) error: \(error.localizedDescription)")
                     }
-                    if attempt < 9 {
+                    if attempt < 11 {
                         try? await Task.sleep(nanoseconds: 1_200_000_000)
                     }
                 }
@@ -324,6 +340,11 @@ final class PlayerViewModel: @unchecked Sendable {
         // 2. Report progress to CineClaw backend
         if cur > 2 && dur > 0 {
             reportProgress(cur: cur, dur: dur, isPlaying: playing)
+        }
+
+        // 3. Poll stream & swarm throughput stats
+        Task { [weak self] in
+            await self?.pollStreamStats()
         }
     }
 
@@ -536,21 +557,38 @@ final class PlayerViewModel: @unchecked Sendable {
         }
     }
 
+    func pollStreamStats() async {
+        let targetHash = playerInfo?.mediaSourceId ?? release.effectiveHash
+        guard !targetHash.isEmpty || !tconst.isEmpty else { return }
+        do {
+            let stats = try await CineClawClient.shared.getStreamStats(
+                hash: targetHash,
+                tconst: tconst,
+                season: season,
+                episode: episode,
+                duration: duration > 0 ? duration : (playerInfo?.durationSeconds ?? 0)
+            )
+            self.streamStats = stats
+        } catch {
+            // Silently ignore transient stats network errors
+        }
+    }
+
     func loadQualityGroupsIfNeeded() async {
         guard qualityGroups.isEmpty else { return }
         isLoadingTorrents = true
         do {
             let imdbIdParam = tconst.hasPrefix("tt") ? tconst : nil
-            let list = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: playerInfo?.title ?? release.title)
-            self.qualityGroups = groupReleases(list)
+            let list = try await CineClawClient.shared.getTorrents(imdbId: imdbIdParam, query: playerInfo?.title ?? release.title, season: season)
+            self.qualityGroups = groupReleases(list, forSeason: season)
         } catch {
             logger.error("Failed to load quality groups for player: \(error.localizedDescription)")
         }
         isLoadingTorrents = false
     }
 
-    private func groupReleases(_ list: [TorrentRelease]) -> [QualityGroup] {
-        TorrentSelectionHelper.groupReleases(list)
+    private func groupReleases(_ list: [TorrentRelease], forSeason targetSeason: Int? = nil) -> [QualityGroup] {
+        TorrentSelectionHelper.groupReleases(list, forSeason: targetSeason)
     }
 
     func stop() {
