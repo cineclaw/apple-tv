@@ -193,10 +193,20 @@ struct PlayerInfoResponse: Codable, Sendable {
     let height: Int?
     let transcodeProfiles: [TranscodeProfile]?
     let transcodeStreamUrl: String?
+    let skipSegments: [SkipSegment]?
 
     var effectiveStreamUrl: String? {
         directStreamUrl ?? streamUrl
     }
+}
+
+struct SkipSegment: Codable, Sendable, Identifiable, Equatable {
+    let type: String
+    let startTime: Double
+    let endTime: Double
+    let label: String
+
+    var id: String { "\(type)_\(startTime)_\(endTime)" }
 }
 
 struct TranscodeProfile: Codable, Sendable, Identifiable, Hashable {

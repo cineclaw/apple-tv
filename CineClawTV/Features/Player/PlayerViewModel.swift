@@ -48,6 +48,17 @@ final class PlayerViewModel: @unchecked Sendable {
     var qualityGroups: [QualityGroup] = []
     var isLoadingTorrents: Bool = false
 
+    var activeSkipSegment: SkipSegment? {
+        guard let segments = playerInfo?.skipSegments, !segments.isEmpty else { return nil }
+        let time = currentTime
+        return segments.first { time >= $0.startTime && time < $0.endTime }
+    }
+
+    func skipActiveSegment() {
+        guard let segment = activeSkipSegment else { return }
+        seek(to: segment.endTime)
+    }
+
     var audioTracks: [AudioTrackOption] {
         if isTranscoding, let serverTracks = playerInfo?.audioTracks, !serverTracks.isEmpty {
             return serverTracks.map { track in

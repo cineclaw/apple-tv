@@ -509,6 +509,10 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     private let audioButton = UIButton(type: .system)
     private let qualityButton = UIButton(type: .system)
 
+    // Floating "Skip Intro" / "Next Episode" Button with Siri Remote focus
+    private let skipIntroButton = UIButton(type: .system)
+    private var lastActiveSkipSegmentId: String? = nil
+
     // HUD Toast for ±10s skips
     private let hudToastContainer = UIView()
     private let hudToastIcon = UIImageView()
@@ -545,6 +549,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         setupScrim()
         setupTopBar()
         setupControls()
+        setupSkipIntroButton()
         setupHUDToast()
         setupGestures()
         setupTimers()
@@ -934,6 +939,132 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         qualityButton.menu = UIMenu(title: "Качество и транскодирование", children: elements)
     }
 
+    // MARK: - Skip Intro / Outro Button
+    private func setupSkipIntroButton() {
+        skipIntroButton.translatesAutoresizingMaskIntoConstraints = false
+
+        var config = UIButton.Configuration.filled()
+        config.cornerStyle = .capsule
+        config.baseForegroundColor = .white
+        config.background.backgroundColor = UIColor(red: 15/255, green: 23/255, blue: 42/255, alpha: 0.95)
+        config.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 26, bottom: 14, trailing: 26)
+
+        var titleAttr = AttributedString("Пропустить заставку ▶")
+        titleAttr.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+        config.attributedTitle = titleAttr
+
+        skipIntroButton.configuration = config
+        skipIntroButton.layer.cornerRadius = 28
+        skipIntroButton.layer.borderWidth = 1.5
+        skipIntroButton.layer.borderColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 0.5).cgColor
+        skipIntroButton.clipsToBounds = false
+        skipIntroButton.alpha = 0.0
+        skipIntroButton.isHidden = true
+
+        skipIntroButton.configurationUpdateHandler = { btn in
+            var updated = btn.configuration ?? UIButton.Configuration.filled()
+            if btn.isFocused {
+                updated.baseForegroundColor = .black
+                updated.background.backgroundColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 1.0)
+                btn.transform = CGAffineTransform(scaleX: 1.1, y: 1.1)
+                btn.layer.borderColor = UIColor.white.cgColor
+                btn.layer.shadowColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 0.8).cgColor
+                btn.layer.shadowRadius = 16
+                btn.layer.shadowOpacity = 0.8
+                btn.layer.shadowOffset = .zero
+            } else {
+                updated.baseForegroundColor = .white
+                updated.background.backgroundColor = UIColor(red: 15/255, green: 23/255, blue: 42/255, alpha: 0.95)
+                btn.transform = .identity
+                btn.layer.borderColor = UIColor(red: 16/255, green: 185/255, blue: 129/255, alpha: 0.5).cgColor
+                btn.layer.shadowOpacity = 0
+            }
+            btn.configuration = updated
+        }
+
+        skipIntroButton.addTarget(self, action: #selector(skipIntroTapped), for: .primaryActionTriggered)
+        view.addSubview(skipIntroButton)
+
+        NSLayoutConstraint.activate([
+            skipIntroButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -40),
+            skipIntroButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -130),
+            skipIntroButton.heightAnchor.constraint(equalToConstant: 56)
+        ])
+    }
+
+    @objc private func skipIntroTapped() {
+        guard let seg = viewModel.activeSkipSegment else { return }
+        let isCredits = seg.type == "credits"
+        viewModel.skipActiveSegment()
+        hideSkipIntroButton()
+        showHUDToastWithText(isCredits ? "Следующая серия" : "Заставка пропущена")
+    }
+
+    private func showHUDToastWithText(_ text: String) {
+        hudTimer?.invalidate()
+        let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)
+        hudToastIcon.image = UIImage(systemName: "forward.fill", withConfiguration: config)
+        hudToastLabel.text = text
+
+        UIView.animate(withDuration: 0.15) {
+            self.hudToastContainer.alpha = 1.0
+        }
+
+        hudTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
+            UIView.animate(withDuration: 0.2) {
+                self?.hudToastContainer.alpha = 0.0
+            }
+        }
+    }
+
+    func updateSkipIntroState() {
+        guard let seg = viewModel.activeSkipSegment else {
+            if !skipIntroButton.isHidden {
+                hideSkipIntroButton()
+            }
+            return
+        }
+
+        let segId = "\(seg.type)_\(seg.startTime)_\(seg.endTime)"
+        if lastActiveSkipSegmentId != segId {
+            lastActiveSkipSegmentId = segId
+            let titleText = seg.type == "credits" ? "Следующая серия ▶" : "Пропустить заставку ▶"
+            var config = skipIntroButton.configuration ?? UIButton.Configuration.filled()
+            var titleAttr = AttributedString(titleText)
+            titleAttr.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+            config.attributedTitle = titleAttr
+            skipIntroButton.configuration = config
+
+            showSkipIntroButton()
+        }
+    }
+
+    private func showSkipIntroButton() {
+        guard skipIntroButton.isHidden || skipIntroButton.alpha < 1.0 else { return }
+        skipIntroButton.isHidden = false
+        UIView.animate(withDuration: 0.3) {
+            self.skipIntroButton.alpha = 1.0
+        } completion: { [weak self] _ in
+            guard let self = self else { return }
+            self.focusButton(self.skipIntroButton)
+        }
+    }
+
+    private func hideSkipIntroButton() {
+        guard !skipIntroButton.isHidden else { return }
+        lastActiveSkipSegmentId = nil
+        UIView.animate(withDuration: 0.25) {
+            self.skipIntroButton.alpha = 0.0
+        } completion: { [weak self] _ in
+            guard let self = self else { return }
+            self.skipIntroButton.isHidden = true
+            if self.skipIntroButton.isFocused {
+                self.setNeedsFocusUpdate()
+                self.updateFocusIfNeeded()
+            }
+        }
+    }
+
     // MARK: - Floating HUD Toast (+10s / -10s)
     private func setupHUDToast() {
         hudToastContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -1025,7 +1156,13 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
 
     // UIGestureRecognizerDelegate: Only intercept Left/Right/Select when controls are HIDDEN
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive press: UIPress) -> Bool {
-        if gestureRecognizer === leftGesture || gestureRecognizer === rightGesture || gestureRecognizer === selectGesture {
+        if gestureRecognizer === selectGesture {
+            if !skipIntroButton.isHidden && skipIntroButton.isFocused {
+                return false // Allow skipIntroButton to receive .primaryActionTriggered directly
+            }
+            return !areControlsVisible
+        }
+        if gestureRecognizer === leftGesture || gestureRecognizer === rightGesture {
             return !areControlsVisible
         }
         return true
@@ -1048,6 +1185,10 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     @objc private func handleMenu(_ gesture: UITapGestureRecognizer) {
+        if !skipIntroButton.isHidden && skipIntroButton.alpha > 0 {
+            hideSkipIntroButton()
+            return
+        }
         if areControlsVisible {
             if scrubberControl.isScrubbing {
                 scrubberControl.cancelScrubbing()
@@ -1060,6 +1201,10 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     @objc private func handleSelect(_ gesture: UITapGestureRecognizer) {
+        if !skipIntroButton.isHidden && skipIntroButton.alpha > 0 {
+            skipIntroTapped()
+            return
+        }
         if !areControlsVisible {
             showControls()
         }
@@ -1116,6 +1261,9 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         if let target = programmaticallyTargetedView {
             return [target]
         }
+        if !skipIntroButton.isHidden && skipIntroButton.alpha > 0 {
+            return [skipIntroButton]
+        }
         if areControlsVisible {
             return [scrubberControl, subtitlesButton, audioButton, qualityButton]
         }
@@ -1150,6 +1298,9 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         if (audioButton.menu?.children.count ?? 0) <= 1 && !viewModel.engine.audioTracks.isEmpty {
             updateAudioMenu()
         }
+
+        // Update Skip Intro / Outro floating prompt
+        updateSkipIntroState()
     }
 
     // MARK: - Native Resume Alert (1:1 with tvOS dialog)

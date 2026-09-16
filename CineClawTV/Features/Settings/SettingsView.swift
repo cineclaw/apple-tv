@@ -306,7 +306,7 @@ struct SettingsView: View {
 
                                     VStack(alignment: .leading, spacing: 16) {
                                         InfoRow(label: "Клиент", value: "CineClaw TV for tvOS")
-                                        InfoRow(label: "Версия", value: "v1.2.0 (tvOS 18+)")
+                                        InfoRow(label: "Версия", value: "v1.3.0 (tvOS 18+)")
                                         InfoRow(label: "Медиа-плеер", value: "KSPlayer (Metal + FFmpeg)")
                                         InfoRow(label: "Торрент-движок", value: "TorrServer Turbo (Порт 8092)")
                                         InfoRow(label: "Платформа", value: DeviceCapabilities.isLegacyAppleTV ? "Apple TV HD (A8)" : "Apple TV 4K")
