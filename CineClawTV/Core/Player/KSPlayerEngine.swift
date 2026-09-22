@@ -145,9 +145,12 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
         options.videoAdaptable = false
-        options.preferredForwardBufferDuration = 0.0
-        options.maxBufferDuration = 90.0
+        options.preferredForwardBufferDuration = 4.0
+        options.maxBufferDuration = 60.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
+
+        // Network read-ahead buffer for TorrServer HTTP Range chunks
+        options.formatContextOptions["buffer_size"] = 1048576
 
         // Probing optimization: cuts open time to <0.5s while keeping proper demuxer buffering
         options.probesize = 1024 * 1024 // 1 MB
@@ -198,9 +201,13 @@ final class KSPlayerEngine: NSObject, VideoPlayerEngine, KSPlayerLayerDelegate {
         options.asynchronousDecompression = true
         options.isAccurateSeek = false
         options.videoAdaptable = false
-        options.preferredForwardBufferDuration = 0.0
-        options.maxBufferDuration = 90.0
+        options.preferredForwardBufferDuration = 4.0
+        options.maxBufferDuration = 60.0
         options.seekFlags = 1 // AVSEEK_FLAG_BACKWARD
+
+        // Network read-ahead buffer for TorrServer HTTP Range chunks
+        options.formatContextOptions["buffer_size"] = 1048576
+
         options.probesize = 1024 * 1024 // 1 MB
         options.maxAnalyzeDuration = 500_000 // 0.5s
         options.autoSelectEmbedSubtitle = false
