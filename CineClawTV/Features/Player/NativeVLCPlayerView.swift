@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import VideoPlayerCore
 
 // MARK: - Interactive Apple TV Scrubber Control
 final class TvScrubberControl: UIControl {
@@ -568,6 +569,10 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         periodicTimer?.invalidate()
         controlsHideTimer?.invalidate()
         hudTimer?.invalidate()
+        #if os(tvOS)
+        view.window?.avDisplayManager.preferredDisplayCriteria = nil
+        #endif
+        viewModel.stop()
     }
 
     // MARK: - Video Surface (KSPlayer Metal Hardware Output)
@@ -575,7 +580,7 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         viewModel.engine.onVideoViewReady = { [weak self] surface in
             self?.attachVideoSurface(surface)
         }
-        if let surface = viewModel.engine.playerLayer?.player.view {
+        if let surface = viewModel.engine.videoSurfaceView {
             attachVideoSurface(surface)
         }
     }
@@ -1223,7 +1228,11 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     // MARK: - Controls Visibility
     func showControls() {
         areControlsVisible = true
+        updatePlaybackProgress()
         updateMenus()
+        Task { @MainActor [weak self] in
+            await self?.viewModel.pollStreamStats()
+        }
         UIView.animate(withDuration: 0.25) {
             self.controlsContainer.alpha = 1.0
             self.topBarContainer.alpha = 1.0
@@ -1285,6 +1294,12 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
     }
 
     private func updatePlaybackProgress() {
+        // Update Skip Intro / Outro floating prompt (always check even when controls are hidden)
+        updateSkipIntroState()
+
+        // Scrubber, badges and stream stats are only needed when OSD controls are visible
+        guard areControlsVisible else { return }
+
         let cur = viewModel.engine.currentTime
         let dur = viewModel.duration
         scrubberControl.updateUI(currentTime: cur, duration: dur)
@@ -1298,9 +1313,6 @@ final class NativeVLCPlayerViewController: UIViewController, UIGestureRecognizer
         if (audioButton.menu?.children.count ?? 0) <= 1 && !viewModel.engine.audioTracks.isEmpty {
             updateAudioMenu()
         }
-
-        // Update Skip Intro / Outro floating prompt
-        updateSkipIntroState()
     }
 
     // MARK: - Native Resume Alert (1:1 with tvOS dialog)

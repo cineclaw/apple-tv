@@ -28,7 +28,14 @@ final class DetailsViewModel {
 
     var torrents: [TorrentRelease] = []
     var qualityGroups: [QualityGroup] = []
-    var selectedRelease: TorrentRelease?
+    var selectedRelease: TorrentRelease? {
+        didSet {
+            if let rel = selectedRelease {
+                let s = isTv ? selectedSeasonNumber : nil
+                PlaybackPreferences.saveRelease(tconst: effectiveTconst, season: s, release: rel)
+            }
+        }
+    }
     var isLoadingTorrents: Bool = true
     var isRefreshingTorrents: Bool = false
     var inWatchlist: Bool = false
@@ -273,8 +280,12 @@ final class DetailsViewModel {
         }
         if isTv {
             self.qualityGroups = groupReleases(self.torrents, forSeason: number)
-            if let current = selectedRelease, seasonMatchScore(current, targetSeason: number) >= 0 {
-                // Keep currently selected release
+            if let savedHash = PlaybackPreferences.getSavedReleaseHash(tconst: effectiveTconst, season: number),
+               let saved = self.torrents.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame }),
+               seasonMatchScore(saved, targetSeason: number) >= 0 {
+                self.selectedRelease = saved
+            } else if let current = selectedRelease, seasonMatchScore(current, targetSeason: number) >= 0 {
+                // Keep currently selected release (e.g. multi-season pack)
             } else if let bestForSeason = selectBestRelease(forSeason: number) {
                 self.selectedRelease = bestForSeason
             }
@@ -302,7 +313,11 @@ final class DetailsViewModel {
                 self.torrents = merged
                 if self.selectedSeasonNumber == sNum {
                     self.qualityGroups = groupReleases(merged, forSeason: sNum)
-                    if self.selectedRelease == nil || seasonMatchScore(self.selectedRelease!, targetSeason: sNum) < 0 {
+                    let savedHash = PlaybackPreferences.getSavedReleaseHash(tconst: effectiveTconst)
+                    if let saved = savedHash.flatMap({ h in merged.first(where: { $0.effectiveHash.caseInsensitiveCompare(h) == .orderedSame }) }),
+                       seasonMatchScore(saved, targetSeason: sNum) >= 0 {
+                        self.selectedRelease = saved
+                    } else if self.selectedRelease == nil || seasonMatchScore(self.selectedRelease!, targetSeason: sNum) < 0 {
                         self.selectedRelease = selectBestRelease(forSeason: sNum)
                     }
                 }
@@ -321,11 +336,19 @@ final class DetailsViewModel {
             self.torrents = list
             self.qualityGroups = groupReleases(list, forSeason: isTv ? selectedSeasonNumber : nil)
 
-            // Prefer server remembered release if available (e.g. chosen from web)
+            let rememberedHash = PlaybackPreferences.getSavedReleaseHash(tconst: effectiveTconst, season: targetSeason > 0 ? targetSeason : nil)
             var matchedSaved: TorrentRelease? = nil
-            if let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: targetSeason, episode: nil),
-               let savedHash = info.mediaSourceId, !savedHash.isEmpty {
+
+            // 1. Check local saved preference
+            if let savedHash = rememberedHash, !savedHash.isEmpty {
                 matchedSaved = list.first(where: { $0.effectiveHash.caseInsensitiveCompare(savedHash) == .orderedSame })
+            }
+
+            // 2. Check server remembered release if not found locally (e.g. chosen from web)
+            if matchedSaved == nil,
+               let info = try? await CineClawClient.shared.getPlayerInfo(tconst: effectiveTconst, season: targetSeason, episode: nil),
+               let serverHash = info.mediaSourceId, !serverHash.isEmpty {
+                matchedSaved = list.first(where: { $0.effectiveHash.caseInsensitiveCompare(serverHash) == .orderedSame })
             }
 
             if let saved = matchedSaved, isTv ? (seasonMatchScore(saved, targetSeason: selectedSeasonNumber) >= 0) : true {
@@ -356,7 +379,11 @@ final class DetailsViewModel {
             self.torrents = list
             self.qualityGroups = groupReleases(list, forSeason: isTv ? selectedSeasonNumber : nil)
 
-            if isTv {
+            let savedHash = PlaybackPreferences.getSavedReleaseHash(tconst: effectiveTconst, season: targetSeason > 0 ? targetSeason : nil)
+            if let saved = savedHash.flatMap({ h in list.first(where: { $0.effectiveHash.caseInsensitiveCompare(h) == .orderedSame }) }),
+               isTv ? (seasonMatchScore(saved, targetSeason: selectedSeasonNumber) >= 0) : true {
+                self.selectedRelease = saved
+            } else if isTv {
                 self.selectedRelease = selectBestRelease(forSeason: selectedSeasonNumber)
             } else {
                 self.selectedRelease = selectBestRelease()

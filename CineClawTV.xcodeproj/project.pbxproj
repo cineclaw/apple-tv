@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AE000003A067640F52BDCB74 /* AetherPlayerModule in Frameworks */ = {isa = PBXBuildFile; productRef = AE000002A067640F52BDCB74 /* AetherPlayerModule */; };
+		AE000007A067640F52BDCB74 /* VideoPlayerCore in Frameworks */ = {isa = PBXBuildFile; productRef = AE000006A067640F52BDCB74 /* VideoPlayerCore */; };
 		01E491EF95C08EBCD5592CB0 /* ShelfRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F995AC044AD2564CC714E182 /* ShelfRowView.swift */; };
 		E1A0F9B1C234D56789012345 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B1C3D4E5F6A7B8C9D0E1F2 /* AuthView.swift */; };
 		14C2FED48623B3A349D1C975 /* QualityAccordionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A29ED4839EE8A7587187C14 /* QualityAccordionView.swift */; };
@@ -16,11 +18,9 @@
 		3648F46ABFE8D78F3194534C /* HeroCarouselView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BFAA52AA3D855AF6CB5D421 /* HeroCarouselView.swift */; };
 		37F939997A8E6E8548AB8734 /* DetailsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2AFFD2DCF21688E135DC0E4 /* DetailsViewModel.swift */; };
 		3DCAD92159E51F6E91632CF0 /* DetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581D7978D0121DF5C8F1216F /* DetailsView.swift */; };
-		4D8EB56BA6282EDA7E4C2662 /* KSPlayerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0E8C4901404D19D24B4250 /* KSPlayerEngine.swift */; };
 		51FFBEF6B2233692897E5004 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2ACCBDF3AA560030940BB6B /* SearchView.swift */; };
 		54E0357BD72EE9AAAB09440C /* MediaModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C5FFB9D1CDB92C43A27F03D /* MediaModels.swift */; };
 		5690A0AB9E6871227470B7C7 /* TorrentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 341A4875BB4F53FC808521C9 /* TorrentModels.swift */; };
-		6A7D7917AA0E449F9C04D32A /* KSPlayer in Frameworks */ = {isa = PBXBuildFile; productRef = F1CA44FEC9474F099DBBCEF4 /* KSPlayer */; };
 		7127BB68A34013C0442ED85B /* SessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAB8CCD7D49328DB450E36C4 /* SessionManager.swift */; };
 		73767D90732156BC891DAE4E /* PlaybackModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97D3F1EA03FBA8BFF71B778C /* PlaybackModels.swift */; };
 		77BC91106F5BE3460E5F73A2 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FFC27592B37683AB6894A8 /* MainTabView.swift */; };
@@ -29,7 +29,6 @@
 		80743D55EA38B43857C89151 /* PlayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 792692F2E3811ED7FD164C98 /* PlayerViewModel.swift */; };
 		97118C62A7CEEC3D235A92D2 /* ContinueWatchingRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27201F6ADE294D2451066F06 /* ContinueWatchingRow.swift */; };
 		99B81C5EFDE943F6D52F2C26 /* CineClawClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D058099D8CCB28E9D63BCBD /* CineClawClient.swift */; };
-		A36FFB3DF241403DEDB6793D /* VideoPlayerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = D523365E904663FF815EE2BC /* VideoPlayerEngine.swift */; };
 		AB5E14B8C18C778CF68174F7 /* HomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D9DDF0C04EFBCB9C453B9AB /* HomeModels.swift */; };
 		AFB51C2CF3B9948C01FC02CD /* CinemaPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F63398E5974A662A5166BBF6 /* CinemaPlayerView.swift */; };
 		B5185D8999222DE87CAE23E5 /* HomeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF81B69FD811EFA90E52CD20 /* HomeViewModel.swift */; };
@@ -78,9 +77,7 @@
 		AAB8CCD7D49328DB450E36C4 /* SessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionManager.swift; sourceTree = "<group>"; };
 		C2ACCBDF3AA560030940BB6B /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		C8F39B57CE12B8FA6CA4A0E6 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		CB0E8C4901404D19D24B4250 /* KSPlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KSPlayerEngine.swift; sourceTree = "<group>"; };
 		CF81B69FD811EFA90E52CD20 /* HomeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeViewModel.swift; sourceTree = "<group>"; };
-		D523365E904663FF815EE2BC /* VideoPlayerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerEngine.swift; sourceTree = "<group>"; };
 		DBCEC8AC4B853C080895BBC7 /* Colors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Colors.swift; sourceTree = "<group>"; };
 		F2AFFD2DCF21688E135DC0E4 /* DetailsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailsViewModel.swift; sourceTree = "<group>"; };
 		F63398E5974A662A5166BBF6 /* CinemaPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CinemaPlayerView.swift; sourceTree = "<group>"; };
@@ -92,7 +89,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				6A7D7917AA0E449F9C04D32A /* KSPlayer in Frameworks */,
+				AE000003A067640F52BDCB74 /* AetherPlayerModule in Frameworks */,
+				AE000007A067640F52BDCB74 /* VideoPlayerCore in Frameworks */,
 				7E53EB8C92FCEB062C5C086C /* Nuke in Frameworks */,
 				7CA658101D1503E3AD013A59 /* NukeUI in Frameworks */,
 			);
@@ -203,8 +201,6 @@
 			children = (
 				576B782930D7C2D42B5B426D /* AVPlayerEngine.swift */,
 				47EE810C3A6C3B7541B8319C /* NowPlayingService.swift */,
-				D523365E904663FF815EE2BC /* VideoPlayerEngine.swift */,
-				CB0E8C4901404D19D24B4250 /* KSPlayerEngine.swift */,
 			);
 			path = Player;
 			sourceTree = "<group>";
@@ -304,7 +300,8 @@
 			);
 			name = CineClawTV;
 			packageProductDependencies = (
-				F1CA44FEC9474F099DBBCEF4 /* KSPlayer */,
+				AE000002A067640F52BDCB74 /* AetherPlayerModule */,
+				AE000006A067640F52BDCB74 /* VideoPlayerCore */,
 				192F20267AB72F132F663954 /* Nuke */,
 				102BC15C1B8C8ABB7D737E45 /* NukeUI */,
 			);
@@ -337,8 +334,8 @@
 			mainGroup = 7912D6683EFA012C132DE318;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				AE000001A067640F52BDCB74 /* XCLocalSwiftPackageReference "PlayerEngines" */,
 				F0ACD450A067640F52BDCB74 /* XCRemoteSwiftPackageReference "Nuke" */,
-				1263AAF49F33E5DFB3F82E8C /* XCRemoteSwiftPackageReference "KSPlayer" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DC5F57DAE6C29CC4ED1E432D /* Products */;
@@ -388,7 +385,6 @@
 				01E491EF95C08EBCD5592CB0 /* ShelfRowView.swift in Sources */,
 				5690A0AB9E6871227470B7C7 /* TorrentModels.swift in Sources */,
 				4D8EB56BA6282EDA7E4C2662 /* KSPlayerEngine.swift in Sources */,
-				A36FFB3DF241403DEDB6793D /* VideoPlayerEngine.swift in Sources */,
 				D6B4AA237EF899B0E667BBC7 /* WatchlistView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -537,6 +533,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.andvikt.cineclaw;
 				PRODUCT_NAME = CineClaw;
 				SDKROOT = appletvos;
+				SWIFT_ENABLE_EXPLICIT_MODULE_BUILDS = NO;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 3;
 				TVOS_DEPLOYMENT_TARGET = 18.0;
@@ -594,15 +591,14 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		1263AAF49F33E5DFB3F82E8C /* XCRemoteSwiftPackageReference "KSPlayer" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/kingslay/KSPlayer.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
+/* Begin XCLocalSwiftPackageReference section */
+		AE000001A067640F52BDCB74 /* XCLocalSwiftPackageReference "PlayerEngines" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = PlayerEngines;
 		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
 		F0ACD450A067640F52BDCB74 /* XCRemoteSwiftPackageReference "Nuke" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/kean/Nuke";
@@ -614,6 +610,16 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		AE000002A067640F52BDCB74 /* AetherPlayerModule */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE000001A067640F52BDCB74 /* XCLocalSwiftPackageReference "PlayerEngines" */;
+			productName = AetherPlayerModule;
+		};
+		AE000006A067640F52BDCB74 /* VideoPlayerCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AE000001A067640F52BDCB74 /* XCLocalSwiftPackageReference "PlayerEngines" */;
+			productName = VideoPlayerCore;
+		};
 		102BC15C1B8C8ABB7D737E45 /* NukeUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = F0ACD450A067640F52BDCB74 /* XCRemoteSwiftPackageReference "Nuke" */;
@@ -623,11 +629,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = F0ACD450A067640F52BDCB74 /* XCRemoteSwiftPackageReference "Nuke" */;
 			productName = Nuke;
-		};
-		F1CA44FEC9474F099DBBCEF4 /* KSPlayer */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 1263AAF49F33E5DFB3F82E8C /* XCRemoteSwiftPackageReference "KSPlayer" */;
-			productName = KSPlayer;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

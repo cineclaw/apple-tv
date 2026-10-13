@@ -58,6 +58,64 @@ struct AudioPreferenceRequest: Codable, Sendable {
     let preferredAudioTitle: String
 }
 
+enum PlaybackPreferences {
+    private static let releasePrefix = "cineclaw_pref_release_"
+    private static let audioTitlePrefix = "cineclaw_pref_audio_title_"
+    private static let globalAudioPrefKey = "cineclaw_global_audio_pref"
+
+    private static func releaseKey(tconst: String, season: Int?) -> String {
+        if let s = season, s > 0 {
+            return "\(releasePrefix)\(tconst):s\(s)"
+        }
+        return "\(releasePrefix)\(tconst)"
+    }
+
+    static func saveRelease(tconst: String, season: Int? = nil, release: TorrentRelease) {
+        let hash = release.effectiveHash
+        guard !hash.isEmpty && !tconst.isEmpty else { return }
+
+        // 1. If season is specified, save for this particular season
+        if let s = season, s > 0 {
+            UserDefaults.standard.set(hash, forKey: releaseKey(tconst: tconst, season: s))
+        }
+        // 2. Also record as latest selected release for the title / multi-season pack
+        UserDefaults.standard.set(hash, forKey: releaseKey(tconst: tconst, season: nil))
+    }
+
+    static func getSavedReleaseHash(tconst: String, season: Int? = nil) -> String? {
+        guard !tconst.isEmpty else { return nil }
+
+        // 1. Check season-specific saved release first
+        if let s = season, s > 0 {
+            if let seasonHash = UserDefaults.standard.string(forKey: releaseKey(tconst: tconst, season: s)), !seasonHash.isEmpty {
+                return seasonHash
+            }
+        }
+
+        // 2. Fallback to title-level release / multi-season pack
+        return UserDefaults.standard.string(forKey: releaseKey(tconst: tconst, season: nil))
+    }
+
+    static func saveAudioPreference(tconst: String, title: String) {
+        let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        if !tconst.isEmpty {
+            UserDefaults.standard.set(clean, forKey: "\(audioTitlePrefix)\(tconst)")
+        }
+        UserDefaults.standard.set(clean, forKey: globalAudioPrefKey)
+    }
+
+    static func getSavedAudioPreference(tconst: String) -> String? {
+        guard !tconst.isEmpty else { return nil }
+        return UserDefaults.standard.string(forKey: "\(audioTitlePrefix)\(tconst)")
+    }
+
+    static func getGlobalAudioPreference() -> String? {
+        UserDefaults.standard.string(forKey: globalAudioPrefKey)
+    }
+}
+
+
 struct LoginRequest: Codable, Sendable {
     let username: String
     let password: String
@@ -88,6 +146,36 @@ struct PairingStatusResponse: Codable, Sendable {
     let paired: Bool
     let token: String?
     let username: String?
+}
+
+struct PairInitRequest: Codable, Sendable {
+    let code: String
+    let deviceName: String
+
+    enum CodingKeys: String, CodingKey {
+        case code
+        case deviceName = "device_name"
+    }
+}
+
+struct PairInitResponse: Codable, Sendable {
+    let success: Bool
+    let code: String
+}
+
+struct HealthResponse: Codable, Sendable {
+    let status: String?
+    let service: String?
+    let name: String?
+    let version: String?
+}
+
+struct DiscoveredServer: Identifiable, Hashable, Sendable {
+    var id: String { url }
+    let name: String
+    let url: String
+    let version: String?
+    let isOnline: Bool
 }
 
 struct WatchlistCheckResponse: Codable, Sendable {

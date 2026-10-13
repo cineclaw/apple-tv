@@ -274,6 +274,48 @@ struct SettingsView: View {
                                         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.obsidianBorder, lineWidth: 1))
                                 )
 
+                                // Section: Video Player Engine
+                                VStack(alignment: .leading, spacing: 14) {
+                                    Text("Движок видеоплеера")
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundColor(.textSecondary)
+
+                                    Text("Выберите технологию декодирования и вывода видео")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.textMuted)
+
+                                    HStack(spacing: 16) {
+                                        ForEach(PlayerEngineType.allCases) { engineType in
+                                            Button {
+                                                apiConfig.playerEngine = engineType
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 6) {
+                                                    Text(engineType.title)
+                                                        .font(.system(size: 18, weight: .bold))
+                                                        .foregroundColor(apiConfig.playerEngine == engineType ? .black : .white)
+                                                    Text(engineType.subtitle)
+                                                        .font(.system(size: 13))
+                                                        .foregroundColor(apiConfig.playerEngine == engineType ? Color.black.opacity(0.8) : .textMuted)
+                                                }
+                                                .padding(.horizontal, 20)
+                                                .padding(.vertical, 14)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .fill(apiConfig.playerEngine == engineType ? Color.emeraldPrimary : Color.obsidianCard)
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
+                                }
+                                .padding(24)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(Color.obsidianCard)
+                                        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.obsidianBorder, lineWidth: 1))
+                                )
+
                                 // Section: Audio Passthrough
                                 VStack(alignment: .leading, spacing: 14) {
                                     Toggle(isOn: $apiConfig.audioPassthrough) {
@@ -307,7 +349,7 @@ struct SettingsView: View {
                                     VStack(alignment: .leading, spacing: 16) {
                                         InfoRow(label: "Клиент", value: "CineClaw TV for tvOS")
                                         InfoRow(label: "Версия", value: "v1.3.0 (tvOS 18+)")
-                                        InfoRow(label: "Медиа-плеер", value: "KSPlayer (Metal + FFmpeg)")
+                                        InfoRow(label: "Медиа-плеер", value: apiConfig.playerEngine.title)
                                         InfoRow(label: "Торрент-движок", value: "TorrServer Turbo (Порт 8092)")
                                         InfoRow(label: "Платформа", value: DeviceCapabilities.isLegacyAppleTV ? "Apple TV HD (A8)" : "Apple TV 4K")
                                         InfoRow(label: "Аппаратный H.265", value: DeviceCapabilities.supportsHardwareHEVC ? "Поддерживается" : "Серверный транскод (H.264)")

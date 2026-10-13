@@ -14,7 +14,9 @@ struct AuthView: View {
     @State private var isCheckingServer: Bool = false
 
     @State private var pairingCode: String = String(format: "%06d", Int.random(in: 100_000...999_999))
-    @State private var pairingStatus: String = "Ожидание сопряжения..."
+    @State private var pairingStatus: String = "Ожидание сопряжения со смартфона..."
+    @State private var discoveredServers: [DiscoveredServer] = []
+    @State private var isDiscovering: Bool = false
 
     private let filter = CIFilter.qrCodeGenerator()
 
@@ -43,9 +45,9 @@ struct AuthView: View {
             .ignoresSafeArea()
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 36) {
+                VStack(spacing: 32) {
                     // Header Branding
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         HStack(spacing: 16) {
                             RoundedRectangle(cornerRadius: 16)
                                 .fill(Color.emeraldPrimary)
@@ -65,12 +67,92 @@ struct AuthView: View {
                             .font(.system(size: 22, weight: .medium))
                             .foregroundColor(.textSecondary)
                     }
-                    .padding(.top, 40)
+                    .padding(.top, 36)
+
+                    // LAN Discovered Servers Row
+                    VStack(spacing: 12) {
+                        if isDiscovering {
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Поиск серверов CineClaw в локальной сети...")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.textMuted)
+                            }
+                            .padding(.vertical, 4)
+                        } else if !discoveredServers.isEmpty {
+                            HStack(spacing: 14) {
+                                Text("Серверы в сети:")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.textMuted)
+
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 12) {
+                                        ForEach(discoveredServers) { srv in
+                                            let isSelected = srv.url.trimmingCharacters(in: CharacterSet(charactersIn: "/")) ==
+                                                             apiConfig.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+
+                                            Button {
+                                                selectServer(srv.url)
+                                            } label: {
+                                                HStack(spacing: 8) {
+                                                    Circle()
+                                                        .fill(srv.isOnline ? Color.emeraldPrimary : Color.red)
+                                                        .frame(width: 8, height: 8)
+
+                                                    Text(srv.name)
+                                                        .font(.system(size: 16, weight: isSelected ? .bold : .medium))
+                                                        .foregroundColor(isSelected ? .textPrimary : .textSecondary)
+
+                                                    Text("(\(srv.url.replacingOccurrences(of: "http://", with: "")))")
+                                                        .font(.system(size: 14))
+                                                        .foregroundColor(.textMuted)
+
+                                                    if isSelected {
+                                                        Image(systemName: "checkmark")
+                                                            .font(.system(size: 12, weight: .bold))
+                                                            .foregroundColor(.emeraldPrimary)
+                                                    }
+                                                }
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 8)
+                                                .background(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .fill(isSelected ? Color.emeraldPrimary.opacity(0.18) : Color.obsidianCard)
+                                                )
+                                                .overlay(
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(isSelected ? Color.emeraldPrimary : Color.obsidianBorder, lineWidth: 1)
+                                                )
+                                            }
+                                            .buttonStyle(TVCardButtonStyle(cornerRadius: 12, focusedScale: 1.05))
+                                        }
+                                    }
+                                }
+
+                                Button {
+                                    Task { await discoverServers() }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "arrow.clockwise")
+                                            .font(.system(size: 14, weight: .bold))
+                                        Text("Обновить")
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.obsidianCard))
+                                }
+                                .buttonStyle(TVCardButtonStyle(cornerRadius: 10, focusedScale: 1.05))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 60)
 
                     // 2-Column Content Layout
                     HStack(alignment: .top, spacing: 60) {
                         // Left Column: Server URL & Direct Credentials
-                        VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 22) {
                             Text("Вход по логину и паролю")
                                 .font(.system(size: 26, weight: .bold))
                                 .foregroundColor(.textPrimary)
@@ -112,7 +194,10 @@ struct AuthView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
                                     .onChange(of: serverUrlInput) { _, newVal in
                                         apiConfig.setCleanBaseURL(newVal)
-                                        Task { await checkServerStatus() }
+                                        Task {
+                                            await checkServerStatus()
+                                            await startPairingSession()
+                                        }
                                     }
 
                                 // Quick presets
@@ -122,9 +207,7 @@ struct AuthView: View {
                                         .foregroundColor(.textMuted)
 
                                     Button("NAS (192.168.88.19)") {
-                                        serverUrlInput = "http://192.168.88.19:3000"
-                                        apiConfig.setCleanBaseURL(serverUrlInput)
-                                        Task { await checkServerStatus() }
+                                        selectServer("http://192.168.88.19:3000")
                                     }
                                     .buttonStyle(.plain)
                                     .font(.system(size: 15, weight: .semibold))
@@ -133,9 +216,7 @@ struct AuthView: View {
                                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.obsidianCard))
 
                                     Button("Local (127.0.0.1)") {
-                                        serverUrlInput = "http://127.0.0.1:3000"
-                                        apiConfig.setCleanBaseURL(serverUrlInput)
-                                        Task { await checkServerStatus() }
+                                        selectServer("http://127.0.0.1:3000")
                                     }
                                     .buttonStyle(.plain)
                                     .font(.system(size: 15, weight: .semibold))
@@ -185,7 +266,6 @@ struct AuthView: View {
                                 .background(
                                     RoundedRectangle(cornerRadius: 10)
                                         .fill(Color.red.opacity(0.15))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.3), lineWidth: 1))
                                 )
                             }
 
@@ -224,11 +304,15 @@ struct AuthView: View {
                                 .font(.system(size: 26, weight: .bold))
                                 .foregroundColor(.textPrimary)
 
-                            Text("Отсканируйте камерой смартфона в веб-приложении CineClaw")
+                            Text("Отсканируйте камерой смартфона или откройте в браузере:")
                                 .font(.system(size: 16))
                                 .foregroundColor(.textSecondary)
                                 .multilineTextAlignment(.center)
                                 .frame(maxWidth: 320)
+
+                            Text("\(apiConfig.baseURL)/pair")
+                                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                                .foregroundColor(.emeraldPrimary)
 
                             let pairURL = "\(apiConfig.baseURL)/pair?code=\(pairingCode)"
                             if let qr = generateQRCode(from: pairURL) {
@@ -257,9 +341,13 @@ struct AuthView: View {
                             .padding(.vertical, 10)
                             .background(RoundedRectangle(cornerRadius: 12).fill(Color.obsidianCard))
 
-                            Text(pairingStatus)
-                                .font(.system(size: 15))
-                                .foregroundColor(.textMuted)
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                                Text(pairingStatus)
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.textMuted)
+                            }
                         }
                         .padding(32)
                         .background(
@@ -276,9 +364,41 @@ struct AuthView: View {
             }
         }
         .task {
+            await discoverServers()
             await checkServerStatus()
+            await startPairingSession()
             await pollPairingStatus()
         }
+    }
+
+    private func selectServer(_ url: String) {
+        serverUrlInput = url
+        apiConfig.setCleanBaseURL(url)
+        Task {
+            await checkServerStatus()
+            await startPairingSession()
+        }
+    }
+
+    private func discoverServers() async {
+        isDiscovering = true
+        let found = await CineClawClient.shared.discoverLocalServers()
+        discoveredServers = found
+        isDiscovering = false
+
+        if let active = found.first(where: { $0.isOnline }) {
+            if serverUrlInput.contains("127.0.0.1") || isServerOnline == false {
+                selectServer(active.url)
+            }
+        }
+    }
+
+    private func startPairingSession() async {
+        _ = try? await CineClawClient.shared.initPairing(
+            code: pairingCode,
+            deviceName: "Apple TV",
+            customBaseURL: apiConfig.baseURL
+        )
     }
 
     private func checkServerStatus() async {
@@ -311,10 +431,10 @@ struct AuthView: View {
 
     private func pollPairingStatus() async {
         while !Task.isCancelled && !session.isPaired {
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { break }
 
-            if let resp = try? await CineClawClient.shared.checkPairingStatus(code: pairingCode), resp.paired {
+            if let resp = try? await CineClawClient.shared.checkPairingStatus(code: pairingCode, customBaseURL: apiConfig.baseURL), resp.paired {
                 if let token = resp.token {
                     session.setSession(token: token, username: resp.username)
                     pairingStatus = "✓ Успешно сопряжено!"

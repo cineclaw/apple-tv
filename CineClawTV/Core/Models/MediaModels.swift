@@ -1,5 +1,41 @@
 import Foundation
 
+struct VideoItem: Codable, Sendable, Identifiable {
+    var id: String { key.isEmpty ? (streamUrl ?? UUID().uuidString) : key }
+    let name: String
+    let key: String
+    let site: String
+    let type: String?
+    let official: Bool?
+    let publishedAt: String?
+    let streamUrl: String?
+    let thumbnailUrl: String?
+
+    var isKinopoisk: Bool {
+        site.caseInsensitiveCompare("Kinopoisk") == .orderedSame
+    }
+
+    var isYouTube: Bool {
+        site.caseInsensitiveCompare("YouTube") == .orderedSame
+    }
+
+    var effectiveThumbnailURL: URL? {
+        if let thumbnailUrl, !thumbnailUrl.isEmpty, let url = URL(string: thumbnailUrl) {
+            return url
+        }
+        if isYouTube && !key.isEmpty {
+            return URL(string: "https://img.youtube.com/vi/\(key)/hqdefault.jpg")
+        }
+        return nil
+    }
+}
+
+struct TrailerStreamResponse: Codable, Sendable {
+    let trailerId: String
+    let streamUrl: String
+    let thumbnailUrl: String?
+}
+
 struct MovieMetadataResponse: Codable, Sendable {
     let tconst: String
     let title: String
@@ -16,6 +52,61 @@ struct MovieMetadataResponse: Codable, Sendable {
     let crew: [CrewMember]?
     let backdrops: [String]?
     let trailerYoutubeId: String?
+    let premiered: String?
+    let premieredRu: String?
+    let digitalRelease: String?
+    let inTheaters: Bool?
+    let kinopoiskId: Int?
+    let kinopoiskRating: Double?
+    let videos: [VideoItem]?
+
+    init(
+        tconst: String,
+        title: String,
+        originalTitle: String? = nil,
+        year: Int? = nil,
+        rating: Double? = nil,
+        voteCount: Int? = nil,
+        overview: String? = nil,
+        posterPath: String? = nil,
+        backdropPath: String? = nil,
+        genres: [String]? = nil,
+        runtimeMinutes: Int? = nil,
+        cast: [CastMember]? = nil,
+        crew: [CrewMember]? = nil,
+        backdrops: [String]? = nil,
+        trailerYoutubeId: String? = nil,
+        premiered: String? = nil,
+        premieredRu: String? = nil,
+        digitalRelease: String? = nil,
+        inTheaters: Bool? = nil,
+        kinopoiskId: Int? = nil,
+        kinopoiskRating: Double? = nil,
+        videos: [VideoItem]? = nil
+    ) {
+        self.tconst = tconst
+        self.title = title
+        self.originalTitle = originalTitle
+        self.year = year
+        self.rating = rating
+        self.voteCount = voteCount
+        self.overview = overview
+        self.posterPath = posterPath
+        self.backdropPath = backdropPath
+        self.genres = genres
+        self.runtimeMinutes = runtimeMinutes
+        self.cast = cast
+        self.crew = crew
+        self.backdrops = backdrops
+        self.trailerYoutubeId = trailerYoutubeId
+        self.premiered = premiered
+        self.premieredRu = premieredRu
+        self.digitalRelease = digitalRelease
+        self.inTheaters = inTheaters
+        self.kinopoiskId = kinopoiskId
+        self.kinopoiskRating = kinopoiskRating
+        self.videos = videos
+    }
 
     var effectivePosterURL: URL? {
         resolveImageURL(posterPath, prefix: "https://image.tmdb.org/t/p/w500")

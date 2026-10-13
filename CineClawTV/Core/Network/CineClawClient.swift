@@ -93,6 +93,15 @@ final class CineClawClient: Sendable {
         return try decoder.decode(MovieMetadataResponse.self, from: data)
     }
 
+    func getTrailerStream(trailerId: String) async throws -> TrailerStreamResponse {
+        guard let url = makeURL(path: "/api/trailer/\(trailerId)/stream") else {
+            throw URLError(.badURL)
+        }
+        let req = makeRequest(url: url)
+        let (data, _) = try await session.data(for: req)
+        return try decoder.decode(TrailerStreamResponse.self, from: data)
+    }
+
     func getSeriesSeasons(tconst: String) async throws -> [SeasonInfo] {
         guard let url = makeURL(path: "/api/series/\(tconst)/seasons") else {
             throw URLError(.badURL)
@@ -265,9 +274,6 @@ final class CineClawClient: Sendable {
             let (data, response) = try await session.data(for: req)
             if let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) {
                 logger.info("Reported progress for \(tconst): \(position)s/\(duration)s (\(Int(calcPercent))%)")
-                await MainActor.run {
-                    NotificationCenter.default.post(name: .playbackProgressDidChange, object: nil)
-                }
             } else {
                 let msg = String(data: data, encoding: .utf8) ?? ""
                 logger.error("Failed to report progress: \(msg)")
@@ -451,11 +457,40 @@ final class CineClawClient: Sendable {
         return try decoder.decode(HomeShelf.self, from: data)
     }
 
-    func checkPairingStatus(code: String) async throws -> PairingStatusResponse {
-        guard let url = makeURL(path: "/api/auth/pair/status", queryItems: [
-            URLQueryItem(name: "code", value: code)
-        ]) else { throw URLError(.badURL) }
-        let req = makeRequest(url: url)
+    func initPairing(code: String, deviceName: String = "Apple TV", customBaseURL: String? = nil) async throws -> Bool {
+        let base = customBaseURL ?? APIConfig.shared.baseURL
+        guard var components = URLComponents(string: base) else { throw URLError(.badURL) }
+        components.path = "/api/auth/pair/init"
+        guard let url = components.url else { throw URLError(.badURL) }
+
+        let body = try JSONEncoder().encode(PairInitRequest(code: code, deviceName: deviceName))
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.httpBody = body
+        req.timeoutInterval = 8
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return false
+        }
+        let res = try decoder.decode(PairInitResponse.self, from: data)
+        return res.success
+    }
+
+    func checkPairingStatus(code: String, customBaseURL: String? = nil) async throws -> PairingStatusResponse {
+        let base = customBaseURL ?? APIConfig.shared.baseURL
+        guard var components = URLComponents(string: base) else { throw URLError(.badURL) }
+        components.path = "/api/auth/pair/status"
+        components.queryItems = [URLQueryItem(name: "code", value: code)]
+        guard let url = components.url else { throw URLError(.badURL) }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 8
+
         let (data, _) = try await session.data(for: req)
         return try decoder.decode(PairingStatusResponse.self, from: data)
     }
@@ -501,6 +536,9 @@ final class CineClawClient: Sendable {
 
     func pingServer(baseURL: String? = nil) async -> Bool {
         let base = baseURL ?? APIConfig.shared.baseURL
+        if await probeServer(urlStr: base) != nil {
+            return true
+        }
         guard var components = URLComponents(string: base) else { return false }
         components.path = "/"
         guard let url = components.url else { return false }
@@ -514,6 +552,115 @@ final class CineClawClient: Sendable {
         } catch {
             return false
         }
+    }
+
+    // MARK: - LAN Server Discovery
+    func discoverLocalServers() async -> [DiscoveredServer] {
+        var foundMap: [String: DiscoveredServer] = [:]
+
+        // 1. Probe known URLs immediately
+        let known = [
+            APIConfig.shared.baseURL,
+            "http://192.168.88.19:3000",
+            "http://127.0.0.1:3000"
+        ]
+        for urlStr in known {
+            if let server = await probeServer(urlStr: urlStr) {
+                foundMap[server.url] = server
+            }
+        }
+
+        // 2. Discover local subnet prefixes from network interfaces
+        let prefixes = getLocalSubnetPrefixes()
+
+        // 3. Subnet sweep on port 3000 (/api/health)
+        let fastSession: URLSession = {
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.timeoutIntervalForRequest = 0.8
+            cfg.timeoutIntervalForResource = 0.8
+            cfg.httpMaximumConnectionsPerHost = 6
+            return URLSession(configuration: cfg)
+        }()
+
+        await withTaskGroup(of: DiscoveredServer?.self) { group in
+            for prefix in prefixes {
+                for host in 1...254 {
+                    let target = "http://\(prefix)\(host):3000"
+                    if foundMap[target] != nil { continue }
+                    group.addTask {
+                        return await self.probeServer(urlStr: target, customSession: fastSession)
+                    }
+                }
+            }
+
+            for await result in group {
+                if let server = result {
+                    foundMap[server.url] = server
+                }
+            }
+        }
+
+        return Array(foundMap.values).sorted { $0.isOnline && !$1.isOnline }
+    }
+
+    private func probeServer(urlStr: String, customSession: URLSession? = nil) async -> DiscoveredServer? {
+        let clean = urlStr.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: clean) else { return nil }
+        components.path = "/api/health"
+        guard let url = components.url else { return nil }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.timeoutInterval = 0.8
+
+        let activeSession = customSession ?? self.session
+        do {
+            let (data, response) = try await activeSession.data(for: req)
+            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return nil }
+            let health = try? decoder.decode(HealthResponse.self, from: data)
+            if health?.service == "cineclaw" || health?.status == "ok" {
+                let name = (health?.name?.isEmpty == false) ? (health?.name ?? "CineClaw") : "CineClaw"
+                var baseComp = components
+                baseComp.path = ""
+                let baseURLStr = (baseComp.string ?? clean).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                return DiscoveredServer(
+                    name: name,
+                    url: baseURLStr,
+                    version: health?.version,
+                    isOnline: true
+                )
+            }
+        } catch {}
+        return nil
+    }
+
+    private func getLocalSubnetPrefixes() -> [String] {
+        var prefixes = Set<String>()
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else { return [] }
+        defer { freeifaddrs(ifaddr) }
+
+        var current: UnsafeMutablePointer<ifaddrs>? = firstAddr
+        while let ptr = current {
+            let flags = Int32(ptr.pointee.ifa_flags)
+            if (flags & (IFF_UP | IFF_RUNNING)) != 0 && (flags & IFF_LOOPBACK) == 0 {
+                if let sa = ptr.pointee.ifa_addr, sa.pointee.sa_family == UInt8(AF_INET) {
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    if getnameinfo(sa, socklen_t(sa.pointee.sa_len), &hostname, socklen_t(hostname.count), nil, 0, NI_NUMERICHOST) == 0 {
+                        let ip = hostname.withUnsafeBufferPointer { ptr in
+                            String(cString: ptr.baseAddress!)
+                        }
+                        let parts = ip.split(separator: ".")
+                        if parts.count == 4 {
+                            prefixes.insert("\(parts[0]).\(parts[1]).\(parts[2]).")
+                        }
+                    }
+                }
+            }
+            current = ptr.pointee.ifa_next
+        }
+        return Array(prefixes)
     }
 
     // MARK: - Transcode Management

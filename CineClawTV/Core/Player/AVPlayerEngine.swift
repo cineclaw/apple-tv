@@ -1,16 +1,27 @@
 import Foundation
 import AVFoundation
 import AVKit
+import UIKit
 import os
+import VideoPlayerCore
+
+private final class AVPlayerLayerView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+}
 
 @Observable
 @MainActor
-final class AVPlayerEngine: NSObject, @unchecked Sendable {
+final class AVPlayerEngine: NSObject, VideoPlayerEngine, @unchecked Sendable {
     private let logger = Logger(subsystem: "com.cineclaw.tvos", category: "AVPlayerEngine")
 
     let player: AVPlayer = AVPlayer()
+    private let playerView = AVPlayerLayerView()
     private(set) var currentItem: AVPlayerItem?
     private var endObserver: Any?
+
+    var onVideoViewReady: ((UIView) -> Void)?
+    var videoSurfaceView: UIView? { playerView }
 
     var onPlaybackEnded: (@MainActor () -> Void)?
 
@@ -35,18 +46,24 @@ final class AVPlayerEngine: NSObject, @unchecked Sendable {
         return max(0.0, CMTimeGetSeconds(d))
     }
 
+    var audioTracks: [AudioTrackOption] { [] }
+    var subtitleTracks: [SubtitleTrackOption] { [SubtitleTrackOption(id: "off", title: "Выключить субтитры", language: "")] }
+    var currentAudioTrackId: String { "" }
+    var currentSubtitleTrackId: String { "off" }
+
     override init() {
         super.init()
         player.actionAtItemEnd = .pause
+        playerView.playerLayer.player = player
+        playerView.playerLayer.videoGravity = .resizeAspect
     }
 
-    func load(url: URL, initialSeek: Double? = nil, metadata: [AVMetadataItem] = []) {
+    func load(url: URL, initialSeek: Double? = nil) {
         logger.info("Loading HLS stream in AVPlayer: \(url.absoluteString, privacy: .public)")
         cleanEndObserver()
 
         let asset = AVURLAsset(url: url)
         let item = AVPlayerItem(asset: asset)
-        item.externalMetadata = metadata
         self.currentItem = item
 
         endObserver = NotificationCenter.default.addObserver(
@@ -60,6 +77,7 @@ final class AVPlayerEngine: NSObject, @unchecked Sendable {
         }
 
         player.replaceCurrentItem(with: item)
+        onVideoViewReady?(playerView)
 
         if let seek = initialSeek, seek > 2.0 {
             logger.info("Applying initial seek to \(seek)s")
@@ -72,38 +90,8 @@ final class AVPlayerEngine: NSObject, @unchecked Sendable {
         }
     }
 
-    func switchStream(url: URL, preserveTime: Bool = true) {
-        let cur = currentTime
-        logger.info("Switching stream to \(url.absoluteString, privacy: .public) (preserveTime: \(preserveTime), pos: \(cur)s)")
-        cleanEndObserver()
-
-        let asset = AVURLAsset(url: url)
-        let item = AVPlayerItem(asset: asset)
-        if let oldMeta = currentItem?.externalMetadata {
-            item.externalMetadata = oldMeta
-        }
-        self.currentItem = item
-
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.onPlaybackEnded?()
-            }
-        }
-
-        player.replaceCurrentItem(with: item)
-
-        if preserveTime && cur > 1.0 {
-            let target = CMTime(seconds: cur, preferredTimescale: 600)
-            item.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                self?.player.play()
-            }
-        } else {
-            player.play()
-        }
+    func switchStream(url: URL, initialSeek: Double?) {
+        load(url: url, initialSeek: initialSeek)
     }
 
     func play() {
@@ -126,6 +114,9 @@ final class AVPlayerEngine: NSObject, @unchecked Sendable {
         let target = CMTime(seconds: max(0.0, seconds), preferredTimescale: 600)
         player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
     }
+
+    func selectAudio(trackId: String) {}
+    func selectSubtitle(trackId: String) {}
 
     func stop() {
         player.pause()

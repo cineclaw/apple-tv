@@ -1,5 +1,6 @@
 import SwiftUI
 import NukeUI
+import AVKit
 
 enum DetailsFocusField: Hashable {
     case back
@@ -14,6 +15,7 @@ struct DetailsView: View {
     @State private var viewModel: DetailsViewModel
     @State private var showQualitySheet: Bool = false
     @State private var activePlayback: PlaybackTarget?
+    @State private var activeTrailer: VideoItem? = nil
     @State private var pendingCatchUpEpisode: EpisodeInfo? = nil
     @State private var showCatchUpAlert: Bool = false
     @FocusState private var focusedField: DetailsFocusField?
@@ -132,6 +134,10 @@ struct DetailsView: View {
 
                                 // Metadata row
                                 HStack(spacing: 18) {
+                                    if meta.inTheaters == true {
+                                        TagBadge(text: "✨ В КИНОТЕАТРАХ", color: Color(red: 1.0, green: 0.33, blue: 0.0, opacity: 0.25), textColor: Color(red: 1.0, green: 0.45, blue: 0.2))
+                                    }
+
                                     if let rating = meta.rating, rating > 0 {
                                         HStack(spacing: 4) {
                                             Text("★")
@@ -147,10 +153,19 @@ struct DetailsView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 8))
                                     }
 
+                                    if let kp = meta.kinopoiskRating, kp > 0 {
+                                        TagBadge(text: "КП \(String(format: "%.1f", kp))", color: Color(red: 1.0, green: 0.33, blue: 0.0, opacity: 0.2), textColor: Color(red: 1.0, green: 0.45, blue: 0.2))
+                                    }
+
                                     if let year = meta.year, year > 0 {
                                         Text(String(year))
                                             .font(.system(size: 22, weight: .semibold))
                                             .foregroundColor(.textSecondary)
+                                    }
+
+                                    if let premiereDate = formatAppleTvPremiereDate(meta.premieredRu ?? meta.premiered) {
+                                        let label = (meta.premieredRu != nil && !meta.premieredRu!.isEmpty) ? "В РФ: \(premiereDate)" : "Премьера: \(premiereDate)"
+                                        TagBadge(text: label, color: Color.obsidianElevated, textColor: .textSecondary)
                                     }
 
                                     if let runtime = meta.runtimeMinutes, runtime > 0 {
@@ -351,6 +366,38 @@ struct DetailsView: View {
                             .focusSection()
                         }
 
+                        // Trailers & Videos ("Трейлеры и видео")
+                        // On Apple TV, only show playable trailers (Kinopoisk Russian dubbed or direct stream URLs).
+                        // YouTube iframe playback is not supported on tvOS, so unplayable YouTube links are excluded.
+                        if let videos = meta.videos, !videos.isEmpty {
+                            let playableTrailers = videos.filter { ($0.isKinopoisk && !$0.key.isEmpty) || ($0.streamUrl != nil && !$0.streamUrl!.isEmpty) }
+                            if !playableTrailers.isEmpty {
+                                VStack(alignment: .leading, spacing: 18) {
+                                    Text("Трейлеры и видео")
+                                        .font(.system(size: 32, weight: .bold))
+                                        .foregroundColor(.textPrimary)
+
+                                    ScrollView(.horizontal, showsIndicators: false) {
+                                        LazyHStack(spacing: 28) {
+                                            ForEach(playableTrailers) { trailer in
+                                                Button {
+                                                    activeTrailer = trailer
+                                                } label: {
+                                                    TrailerCardView(trailer: trailer, fallbackBackdropURL: meta.effectiveBackdropURL)
+                                                }
+                                                .buttonStyle(TVCardButtonStyle(cornerRadius: 16, focusedScale: 1.06))
+                                            }
+                                        }
+                                        .padding(.vertical, 24)
+                                    }
+                                    .scrollClipDisabled()
+                                }
+                                .padding(.horizontal, 80)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .focusSection()
+                            }
+                        }
+
                         // Cast & Crew Row (Focusable Buttons)
                         if let cast = meta.cast, !cast.isEmpty {
                             VStack(alignment: .leading, spacing: 18) {
@@ -461,6 +508,11 @@ struct DetailsView: View {
             )
             .id(target.id)
         }
+        .fullScreenCover(item: $activeTrailer) { trailer in
+            TrailerPlayerView(trailer: trailer) {
+                activeTrailer = nil
+            }
+        }
         .onChange(of: activePlayback) { oldVal, newVal in
             if oldVal != nil && newVal == nil {
                 NotificationCenter.default.post(name: .playbackProgressDidChange, object: nil)
@@ -523,4 +575,217 @@ struct DetailsView: View {
             )
         }
     }
+}
+
+struct TrailerCardView: View {
+    let trailer: VideoItem
+    var fallbackBackdropURL: URL? = nil
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            LazyImage(url: trailer.effectiveThumbnailURL ?? fallbackBackdropURL) { state in
+                if let image = state.image {
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 380, height: 214)
+                        .clipped()
+                } else {
+                    Rectangle()
+                        .fill(Color.obsidianCard)
+                        .frame(width: 380, height: 214)
+                }
+            }
+            .frame(width: 380, height: 214)
+
+            // Vignette overlay
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: Color.black.opacity(0.35), location: 0.45),
+                    .init(color: Color.black.opacity(0.90), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(width: 380, height: 214)
+
+            // Center play circle
+            Circle()
+                .fill(trailer.isKinopoisk ? Color(red: 1.0, green: 0.33, blue: 0.0, opacity: 0.85) : Color.red.opacity(0.85))
+                .frame(width: 52, height: 52)
+                .overlay(
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundColor(.white)
+                        .offset(x: 2)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+
+            // Badges at top
+            HStack {
+                if trailer.isKinopoisk {
+                    Text("ДУБЛЯЖ • КП")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(red: 1.0, green: 0.33, blue: 0.0, opacity: 0.90))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } else if trailer.isYouTube {
+                    Text("YouTube")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.red.opacity(0.85))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+
+                Spacer()
+
+                if trailer.official == true {
+                    Text("ОФИЦИАЛЬНЫЙ")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.ratingGold)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.75))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            // Bottom title
+            Text(trailer.name)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.white)
+                .lineLimit(2)
+                .padding(14)
+                .shadow(color: .black, radius: 4)
+        }
+        .frame(width: 380, height: 214)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+struct TrailerPlayerView: View {
+    let trailer: VideoItem
+    var onDismiss: () -> Void
+
+    @State private var player: AVPlayer? = nil
+    @State private var isLoading: Bool = true
+    @State private var errorMessage: String? = nil
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let player = player {
+                NativeTrailerPlayerController(player: player)
+                    .ignoresSafeArea()
+            } else if isLoading {
+                VStack(spacing: 24) {
+                    ProgressView()
+                        .tint(.emeraldPrimary)
+                        .scaleEffect(2.0)
+                    Text("Загрузка трейлера...")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundColor(.textSecondary)
+                }
+            } else if let error = errorMessage {
+                VStack(spacing: 24) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 56))
+                        .foregroundColor(.orange)
+                    Text(error)
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundColor(.textPrimary)
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Text("Закрыть")
+                            .font(.system(size: 22, weight: .bold))
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 12)
+                    }
+                    .buttonStyle(EmeraldButtonStyle(isPrimary: true))
+                }
+            }
+        }
+        .onExitCommand {
+            onDismiss()
+        }
+        .task {
+            await resolveStreamAndPlay()
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    private func resolveStreamAndPlay() async {
+        if let streamStr = trailer.streamUrl, !streamStr.isEmpty, let url = URL(string: streamStr) {
+            startPlayback(url: url)
+            return
+        }
+
+        if trailer.isKinopoisk {
+            do {
+                let resp = try await CineClawClient.shared.getTrailerStream(trailerId: trailer.key)
+                if let url = URL(string: resp.streamUrl) {
+                    startPlayback(url: url)
+                } else {
+                    errorMessage = "Неверный адрес видеопотока трейлера"
+                    isLoading = false
+                }
+            } catch {
+                errorMessage = "Не удалось загрузить трейлер Кинопоиск (\(error.localizedDescription))"
+                isLoading = false
+            }
+        } else {
+            errorMessage = "Воспроизведение трейлеров YouTube на Apple TV поддерживается через приложение YouTube"
+            isLoading = false
+        }
+    }
+
+    private func startPlayback(url: URL) {
+        let p = AVPlayer(url: url)
+        self.player = p
+        self.isLoading = false
+        p.play()
+    }
+}
+
+struct NativeTrailerPlayerController: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = true
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
+        if uiViewController.player !== player {
+            uiViewController.player = player
+        }
+    }
+}
+
+func formatAppleTvPremiereDate(_ iso: String?) -> String? {
+    guard let iso = iso, !iso.isEmpty else { return nil }
+    let parts = iso.split(separator: "-")
+    guard parts.count >= 3,
+          let year = parts.first,
+          let month = Int(parts[1]),
+          let day = Int(parts[2]) else {
+        return iso
+    }
+    let months = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+    guard month >= 1, month <= 12 else { return iso }
+    return "\(day) \(months[month - 1]) \(year)"
 }

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftUI
 import os
+import VideoPlayerCore
+import AetherPlayerModule
 
 enum ActivePopover: Hashable, Sendable {
     case none
@@ -20,7 +22,7 @@ final class PlayerViewModel: @unchecked Sendable {
     var season: Int?
     var episode: Int?
 
-    let engine = KSPlayerEngine()
+    let engine: any VideoPlayerEngine
     let nowPlayingService = NowPlayingService()
 
     var isMounting: Bool = false
@@ -92,6 +94,10 @@ final class PlayerViewModel: @unchecked Sendable {
     private var hideControlsTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var periodicTimer: Timer?
+    private var lastNowPlayingUpdate: Date = .distantPast
+    private var lastReportedPlaying: Bool? = nil
+    private var lastReportedCur: Double = 0.0
+    private var pauseTimestamp: Date? = nil
 
     var isPlaying: Bool {
         engine.isPlaying
@@ -135,6 +141,12 @@ final class PlayerViewModel: @unchecked Sendable {
         self.resumeSeconds = resumeSeconds
         self.autoResume = autoResume
         self.qualityGroups = qualityGroups
+
+        if APIConfig.shared.playerEngine == .aether {
+            self.engine = AetherPlayerEngine()
+        } else {
+            self.engine = AVPlayerEngine()
+        }
 
         setupNowPlayingService()
     }
@@ -301,8 +313,27 @@ final class PlayerViewModel: @unchecked Sendable {
                 logger.info("Playing direct container stream: \(streamURL.absoluteString, privacy: .public)")
             }
 
+            let preferredAudioTitle: String? = {
+                // 1. Local saved preference for this title
+                if let saved = PlaybackPreferences.getSavedAudioPreference(tconst: tconst), !saved.isEmpty {
+                    return saved
+                }
+                // 2. Server preferred track title from probe
+                if let srvPref = info?.audioTracks?.first(where: { $0.isDefault == true })?.title, !srvPref.isEmpty {
+                    return srvPref
+                }
+                // 3. Global preferred audio title
+                if let global = PlaybackPreferences.getGlobalAudioPreference(), !global.isEmpty {
+                    return global
+                }
+                return nil
+            }()
+
+            // Save release as remembered release for this title & season
+            PlaybackPreferences.saveRelease(tconst: tconst, season: season, release: release)
+
             self.isMounting = false
-            self.engine.load(url: streamURL, initialSeek: effectiveSeek > 2.0 ? effectiveSeek : nil)
+            self.engine.load(url: streamURL, initialSeek: effectiveSeek > 2.0 ? effectiveSeek : nil, preferredAudio: preferredAudioTitle)
 
             startPeriodicTimer()
             userActivity()
@@ -320,7 +351,7 @@ final class PlayerViewModel: @unchecked Sendable {
 
     private func startPeriodicTimer() {
         periodicTimer?.invalidate()
-        periodicTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        periodicTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.onPeriodicTick()
             }
@@ -338,34 +369,42 @@ final class PlayerViewModel: @unchecked Sendable {
             }
         }
 
-        // 1. Sync now playing metadata to Apple TV / iOS Lock Screen
-        nowPlayingService.updateNowPlaying(
-            title: displayTitle,
-            season: season,
-            episode: episode,
-            currentTime: cur,
-            duration: dur,
-            isPlaying: playing
-        )
-
-        // 2. Report progress to CineClaw backend
-        if cur > 2 && dur > 0 {
+        // Report progress in background without blocking MainActor or triggering UI refresh
+        if cur > 2 && dur > 0 && playing {
             reportProgress(cur: cur, dur: dur, isPlaying: playing)
         }
 
-        // 3. Poll stream & swarm throughput stats
-        Task { [weak self] in
-            await self?.pollStreamStats()
+        // Poll stream & swarm throughput stats only when OSD controls are visible
+        if showControls {
+            Task { [weak self] in
+                await self?.pollStreamStats()
+            }
         }
     }
 
     func play() {
+        let pausedDuration = pauseTimestamp.map { Date().timeIntervalSince($0) } ?? 0.0
+        pauseTimestamp = nil
+
         engine.play()
         userActivity()
         onPeriodicTick()
+
+        // When resuming after a prolonged pause (> 6 seconds), AVPlayer audio and video renderers
+        // can drift, and non-IDR H.264 packets can cause macroblocking/frame tearing.
+        // Performing a clean seek to the exact current time forces the demuxer/muxer to locate
+        // the nearest clean IDR keyframe and re-locks audio/video PTS to the identical timestamp.
+        if pausedDuration > 6.0 {
+            let cur = engine.currentTime
+            if cur > 1.0 {
+                logger.info("Resuming after long pause (\(Int(pausedDuration))s). Resyncing clock to \(cur)s to prevent audio lag and frame tearing.")
+                seek(to: cur)
+            }
+        }
     }
 
     func pause() {
+        pauseTimestamp = Date()
         engine.pause()
         showControls = true
         hideControlsTask?.cancel()
@@ -381,9 +420,20 @@ final class PlayerViewModel: @unchecked Sendable {
     }
 
     func seek(to seconds: Double) {
+        pauseTimestamp = nil
         pendingSeekTarget = seconds
         engine.seek(to: seconds)
+        lastReportedCur = seconds
         userActivity()
+        nowPlayingService.updateNowPlaying(
+            title: displayTitle,
+            season: season,
+            episode: episode,
+            currentTime: seconds,
+            duration: duration,
+            isPlaying: engine.isPlaying
+        )
+        lastNowPlayingUpdate = Date()
     }
 
     func seekRelative(seconds delta: Double) {
@@ -470,6 +520,7 @@ final class PlayerViewModel: @unchecked Sendable {
         }
 
         if let t = title {
+            PlaybackPreferences.saveAudioPreference(tconst: tconst, title: t)
             Task {
                 await CineClawClient.shared.setAudioPreference(imdbId: tconst, title: t)
             }
@@ -515,6 +566,7 @@ final class PlayerViewModel: @unchecked Sendable {
         let cur = engine.currentTime
         logger.info("Switching quality to '\(newRelease.title)' at pos=\(cur)s")
         self.release = newRelease
+        PlaybackPreferences.saveRelease(tconst: tconst, season: season, release: newRelease)
         self.activePopover = .none
         await mountAndPlay(seek: cur)
     }
@@ -554,7 +606,7 @@ final class PlayerViewModel: @unchecked Sendable {
         let e = episode
         let isTv = (s != nil && s! > 0) || (playerInfo?.mediaType == "tv")
 
-        Task {
+        Task.detached(priority: .utility) {
             await CineClawClient.shared.reportProgress(
                 tconst: tc,
                 title: title,
@@ -610,6 +662,7 @@ final class PlayerViewModel: @unchecked Sendable {
         }
         periodicTimer?.invalidate()
         periodicTimer = nil
+        pauseTimestamp = nil
         hideControlsTask?.cancel()
         toastTask?.cancel()
         nowPlayingService.teardown()
@@ -620,5 +673,6 @@ final class PlayerViewModel: @unchecked Sendable {
             }
         }
         engine.stop()
+        NotificationCenter.default.post(name: .playbackProgressDidChange, object: nil)
     }
 }

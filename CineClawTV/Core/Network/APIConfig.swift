@@ -45,6 +45,27 @@ enum PlaybackMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum PlayerEngineType: String, CaseIterable, Identifiable, Sendable {
+    case aether = "aether"
+    case avplayer = "avplayer"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .aether: return "AetherEngine (VideoToolbox)"
+        case .avplayer: return "AVPlayer (Нативный Apple)"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .aether: return "Прямой поток & HLS, авто-частота & DV"
+        case .avplayer: return "Системный плеер AVPlayer"
+        }
+    }
+}
+
 @Observable
 final class APIConfig: @unchecked Sendable {
     static let shared = APIConfig()
@@ -80,6 +101,12 @@ final class APIConfig: @unchecked Sendable {
         }
     }
 
+    var playerEngine: PlayerEngineType {
+        didSet {
+            UserDefaults.standard.set(playerEngine.rawValue, forKey: "cineclaw_player_engine")
+        }
+    }
+
     private init() {
         self.baseURL = UserDefaults.standard.string(forKey: "cineclaw_base_url") ?? "http://192.168.88.19:3000"
         self.defaultQuality = UserDefaults.standard.string(forKey: "cineclaw_default_quality") ?? "1080p"
@@ -88,6 +115,9 @@ final class APIConfig: @unchecked Sendable {
         let modeRaw = UserDefaults.standard.string(forKey: "cineclaw_playback_mode") ?? PlaybackMode.auto.rawValue
         self.playbackMode = PlaybackMode(rawValue: modeRaw) ?? .auto
         self.transcodeQuality = UserDefaults.standard.string(forKey: "cineclaw_transcode_quality") ?? "1080p"
+
+        let engineRaw = UserDefaults.standard.string(forKey: "cineclaw_player_engine") ?? PlayerEngineType.aether.rawValue
+        self.playerEngine = PlayerEngineType(rawValue: engineRaw) ?? .aether
     }
 
     func setCleanBaseURL(_ url: String) {
